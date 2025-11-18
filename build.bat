@@ -76,9 +76,6 @@ set build_option=/t:Build
 set build_boost=0
 set boost_build_variant=release
 set build_data=0
-set build_opencc=0
-set build_rime=0
-set rime_build_variant=release
 set build_weasel=0
 set build_installer=0
 set build_arm64=0
@@ -89,27 +86,20 @@ rem parse the command line options
   if "%1" == "debug" (
     set build_config=Debug
     set boost_build_variant=debug
-    set rime_build_variant=debug
   )
   if "%1" == "release" (
     set build_config=Release
     set boost_build_variant=release
-    set rime_build_variant=release
   )
   if "%1" == "rebuild" set build_option=/t:Rebuild
   if "%1" == "boost" set build_boost=1
   if "%1" == "data" set build_data=1
-  if "%1" == "opencc" set build_opencc=1
-  if "%1" == "rime" set build_rime=1
-  if "%1" == "librime" set build_rime=1
   if "%1" == "weasel" set build_weasel=1
   if "%1" == "installer" set build_installer=1
   if "%1" == "arm64" set build_arm64=1
   if "%1" == "all" (
     set build_boost=1
     set build_data=1
-    set build_opencc=1
-    set build_rime=1
     set build_weasel=1
     set build_installer=1
     set build_arm64=1
@@ -121,10 +111,8 @@ rem parse the command line options
 if %build_weasel% == 0 (
 if %build_boost% == 0 (
 if %build_data% == 0 (
-if %build_opencc% == 0 (
-if %build_rime% == 0 (
   set build_weasel=1
-)))))
+)))
 
 rem quit WeaselServer.exe before building
 cd /d %WEASEL_ROOT%
@@ -140,37 +128,12 @@ if %build_boost% == 1 (
 )
 
 rem -------------------------------------------------------------------------
-rem build librime x64 and Win32
-if %build_rime% == 1 (
-  if not exist librime\build.bat (
-    git submodule update --init --recursive
-    if errorlevel 1 goto error
-  )
-  cd %WEASEL_ROOT%\librime
-  if defined RIME_PLUGINS (
-    pushd %WEASEL_ROOT%\librime
-    call .\action-install-plugins-windows.bat || echo "action-install-plugins-windows.bat failed, continuing..."
-    popd
-  )
-  rem build x64 librime
-  call :build_librime_platform x64 %WEASEL_ROOT%\lib64 %WEASEL_ROOT%\output
-  if errorlevel 1 goto error
-  rem build Win32 librime
-  call :build_librime_platform x86 %WEASEL_ROOT%\lib %WEASEL_ROOT%\output\Win32
-  if errorlevel 1 goto error
-)
-
-rem -------------------------------------------------------------------------
 if %build_weasel% == 1 (
   if not exist output\data\essay.txt (
     set build_data=1
   )
-  if not exist output\data\opencc\TSCharacters.ocd* (
-    set build_opencc=1
-  )
 )
 if %build_data% == 1 call :build_data
-if %build_opencc% == 1 call :build_opencc_data
 
 if %build_weasel% == 0 goto end
 
@@ -288,79 +251,6 @@ rem ---------------------------------------------------------------------------
   if errorlevel 1 goto error
   exit /b
 
-rem ---------------------------------------------------------------------------
-:build_opencc_data
-  if not exist %WEASEL_ROOT%\librime\deps_x64\share\opencc\TSCharacters.ocd2 (
-    cd %WEASEL_ROOT%\librime
-    call %WEASEL_ROOT%\msvc-latest.bat x64
-    set build_dir=build_x64
-    set deps_install_prefix=%WEASEL_ROOT%\librime\deps_x64
-    set rime_install_prefix=%WEASEL_ROOT%\librime\dist_x64
-    rem try ninja to build librime
-    call :TraySetNinja
-    cd %WEASEL_ROOT%\librime
-    if not exist env.bat copy %WEASEL_ROOT%\env.bat env.bat
-    call build.bat deps %rime_build_variant% 
-    if errorlevel 1 goto error
-  )
-  cd %WEASEL_ROOT%
-  if not exist output\data\opencc mkdir output\data\opencc
-  copy %WEASEL_ROOT%\librime\deps_x64\share\opencc\*.* output\data\opencc\
-  if errorlevel 1 goto error
-  exit /b
-
-rem ---------------------------------------------------------------------------
-:TraySetNinja
-    rem try ninja to build librime
-    ninja --version >nul 2>&1
-    rem ninja available
-    if %errorlevel% equ 0 (
-      echo Ninja is available
-      cd %WEASEL_ROOT%
-      xcopy /Y %WEASEL_ROOT%\env.bat %WEASEL_ROOT%\librime\
-      powershell -Command "(Get-Content 'librime\env.bat') | Where-Object {$_ -notmatch '^.*set PLATFORM_TOOLSET=.*$'} | Set-Content 'librime\env.bat'"
-      powershell -Command "(Get-Content 'librime\env.bat') | Where-Object {$_ -notmatch '^.*set CMAKE_GENERATOR=.*$'} | Set-Content 'librime\env.bat'"
-      powershell -Command "(Get-Content 'librime\env.bat') | Where-Object {$_ -notmatch '^.*set ARCH=.*$'} | Set-Content 'librime\env.bat'"
-      set CMAKE_GENERATOR=Ninja
-      set ARCH=
-      set PLATFORM_TOOLSET=
-    )
-    exit /b
-
-rem ---------------------------------------------------------------------------
-rem %1 : ARCH x86 or x64
-rem %2 : target_path of rime.lib, base %WEASEL_ROOT% or abs path
-rem %3 : target_path of rime.dll, base %WEASEL_ROOT% or abs path
-:build_librime_platform
-  call %WEASEL_ROOT%\msvc-latest.bat %1
-  set build_dir=build_%1
-  set deps_install_prefix=%WEASEL_ROOT%\librime\deps_%1
-  set rime_install_prefix=%WEASEL_ROOT%\librime\dist_%1
-
-  if "%1"=="x64" (
-    rem try ninja to build librime
-    call :TraySetNinja
-  )
-
-  cd %WEASEL_ROOT%\librime
-  if not exist env.bat copy %WEASEL_ROOT%\env.bat env.bat
-
-  if not exist %deps_install_prefix%\lib\opencc.lib (
-    call build.bat deps %rime_build_variant%
-    if errorlevel 1 goto error
-  )
-  call build.bat %rime_build_variant%
-  if errorlevel 1 goto error
-
-  cd %WEASEL_ROOT%\librime
-  if "%1"=="x86" (
-    call :copye %WEASEL_ROOT%\librime\dist_%1\include\rime_*.h %WEASEL_ROOT%\include\
-  )
-  call :copye %WEASEL_ROOT%\librime\dist_%1\lib\rime.lib %2\
-  call :copye %WEASEL_ROOT%\librime\dist_%1\lib\rime.dll %3\
-  call :copye %WEASEL_ROOT%\librime\dist_%1\lib\rime.pdb %3\
-
-  exit /b
 rem ---------------------------------------------------------------------------
 rem %1 src
 rem %2 dest
