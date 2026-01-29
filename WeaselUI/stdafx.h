@@ -20,5 +20,4 @@
 #include <string>
 #include <vector>
 
-#include <logging.h>
 #define GDIPVER 0x0110
