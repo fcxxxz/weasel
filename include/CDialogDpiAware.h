@@ -46,7 +46,11 @@ class CDialogDpiAware : public CDialogImpl<T> {
     m_currentDpi = newDpi;
   }
 
- private:
+ protected:
+  UINT m_currentDpi = 96;
+  RECT m_rect;
+  std::unordered_map<HWND, RECT> m_controlOriginalRects;
+  HFONT m_currentFont = nullptr;
   UINT GetWindowDpi() {
     HMONITOR hMonitor = MonitorFromWindow(m_hWnd, MONITOR_DEFAULTTONEAREST);
     UINT dpiX = 96, dpiY = 96;
@@ -58,7 +62,6 @@ class CDialogDpiAware : public CDialogImpl<T> {
     }
     return 96;
   }
-
   void ScaleControlsAndFonts(UINT newDpi) {
     const float scaleFactor = static_cast<float>(newDpi) / 96;
     for (const auto& [hWnd, originalRect] : m_controlOriginalRects) {
@@ -87,7 +90,6 @@ class CDialogDpiAware : public CDialogImpl<T> {
     }
     m_currentFont = hNewFont;
   }
-
   LRESULT OnDpiChanged(UINT, WPARAM wParam, LPARAM lParam, BOOL&) {
     UINT newDpi = HIWORD(wParam);
     if (newDpi == m_currentDpi)
@@ -103,9 +105,4 @@ class CDialogDpiAware : public CDialogImpl<T> {
     Invalidate();
     return 0;
   }
-
-  UINT m_currentDpi = 96;
-  RECT m_rect;
-  std::unordered_map<HWND, RECT> m_controlOriginalRects;
-  HFONT m_currentFont = nullptr;
 };
