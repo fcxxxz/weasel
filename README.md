@@ -2,15 +2,10 @@
 
 如果觉得我瞎整的还不错，可以请我喝冰阔落🥤 :)
 
-<table>
-  <tr>
-    <th>支付宝</th>
-    <th>微信支付</th>
-  </tr>
-  <tr>
+微信赞赏码
 
-  </tr>
-</table>
+<img width="256" height="256" src="https://github.com/user-attachments/assets/56a5f776-afda-46fa-94a2-152bef3762a0" />
+
 
 【小狼毫】輸入法
 ================
