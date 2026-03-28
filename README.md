@@ -4,7 +4,7 @@
 
 微信赞赏码
 
-<img width="256" height="256" src="https://github.com/user-attachments/assets/56a5f776-afda-46fa-94a2-152bef3762a0" />
+<img width="600" height="600" src="https://github.com/user-attachments/assets/503063b1-4951-4d88-aaa3-463585135233" />
 
 
 【小狼毫】輸入法
