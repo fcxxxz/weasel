@@ -17,10 +17,12 @@ using namespace weasel;
 #define COLORTRANSPARENT(color) ((color & 0xff000000) == 0)
 #define COLORNOTTRANSPARENT(color) ((color & 0xff000000) != 0)
 #define TRANS_COLOR 0x00000000
-#define HALF_ALPHA_COLOR(color)                                                \
+#define HALF_ALPHA_COLOR(color) \
   ((((color & 0xff000000) >> 25) & 0xff) << 24) | (color & 0x00ffffff)
 
-void LoadIconIfNeed(wstring &oicofile, const wstring &icofile, HICON &hIcon,
+void LoadIconIfNeed(wstring& oicofile,
+                    const wstring& icofile,
+                    HICON& hIcon,
                     UINT id) {
   if (oicofile == icofile)
     return;
@@ -37,11 +39,20 @@ void LoadIconIfNeed(wstring &oicofile, const wstring &icofile, HICON &hIcon,
                          STATUS_ICON_SIZE, STATUS_ICON_SIZE, LR_DEFAULTCOLOR);
 }
 
-WeaselPanel::WeaselPanel(UI &ui)
-    : m_hWnd(nullptr), m_ctx(ui.ctx()), m_octx(ui.octx()), m_layout(nullptr),
-      m_pD2D(nullptr), m_status(ui.status()), m_in_server(ui.InServer()),
-      m_style(ui.style()), m_uiCallback(ui.uiCallback()), m_ostyle(ui.ostyle()),
-      m_candidateCount(0), m_lastCandidateCount(0), hide_candidates(false) {
+WeaselPanel::WeaselPanel(UI& ui)
+    : m_hWnd(nullptr),
+      m_ctx(ui.ctx()),
+      m_octx(ui.octx()),
+      m_layout(nullptr),
+      m_pD2D(nullptr),
+      m_status(ui.status()),
+      m_in_server(ui.InServer()),
+      m_style(ui.style()),
+      m_uiCallback(ui.uiCallback()),
+      m_ostyle(ui.ostyle()),
+      m_candidateCount(0),
+      m_lastCandidateCount(0),
+      hide_candidates(false) {
   // Prepare shared graphics resources early to reduce first paint latency.
   m_pD2D = std::make_shared<D2D>(m_style);
   auto hInstance = GetModuleHandle(nullptr);
@@ -52,9 +63,13 @@ WeaselPanel::WeaselPanel(UI &ui)
   m_iconDisabled = LoadIcon(hInstance, MAKEINTRESOURCE(IDI_RELOAD));
 }
 
-BOOL WeaselPanel::IsWindow() const { return ::IsWindow(m_hWnd); }
+BOOL WeaselPanel::IsWindow() const {
+  return ::IsWindow(m_hWnd);
+}
 
-HWND WeaselPanel::hwnd() const { return m_hWnd; }
+HWND WeaselPanel::hwnd() const {
+  return m_hWnd;
+}
 
 void WeaselPanel::_ClearTimers() {
   if (!m_hWnd)
@@ -82,7 +97,9 @@ void WeaselPanel::ShowWithTimeout(size_t millisec) {
       ::SetTimer(m_hWnd, AUTOHIDE_TIMER, static_cast<UINT>(millisec), NULL);
 }
 
-bool WeaselPanel::IsCountingDown() const { return m_autoHideTimer != 0; }
+bool WeaselPanel::IsCountingDown() const {
+  return m_autoHideTimer != 0;
+}
 
 void WeaselPanel::ShowWindow(int nCmdShow) {
   ::ShowWindow(m_hWnd, nCmdShow);
@@ -138,8 +155,8 @@ void WeaselPanel::MoveTo(RECT rc) {
     RedrawWindow();
     return;
   }
-  if (m_style.ascii_tip_follow_cursor && m_ctx.empty() && (!m_status.composing) &&
-      m_layout->ShouldDisplayStatusIcon()) {
+  if (m_style.ascii_tip_follow_cursor && m_ctx.empty() &&
+      (!m_status.composing) && m_layout->ShouldDisplayStatusIcon()) {
     POINT p;
     ::GetCursorPos(&p);
     RECT irc{p.x - STATUS_ICON_SIZE, p.y - STATUS_ICON_SIZE, p.x, p.y};
@@ -161,7 +178,7 @@ void WeaselPanel::MoveTo(RECT rc) {
 }
 
 void WeaselPanel::_ResizeWindow() {
-  CSize &size = m_layout->GetContentSize();
+  CSize& size = m_layout->GetContentSize();
   SetWindowPos(m_hWnd, 0, 0, 0, size.cx, size.cy,
                SWP_NOACTIVATE | SWP_NOMOVE | SWP_NOZORDER | SWP_NOREDRAW);
   m_pD2D->OnResize(size.cx, size.cy);
@@ -239,7 +256,7 @@ void WeaselPanel::Refresh() {
   if (hr != S_OK) {
     DEBUG << "Device removed detected: " << HRESULTToString(hr);
     DeviceResources::Get().Reset();
-    if (m_pD2D->swapChain) // only reinit window resources if attached
+    if (m_pD2D->swapChain)  // only reinit window resources if attached
       m_pD2D->InitDirect2D();
   }
   _CreateLayout();
@@ -269,8 +286,8 @@ BOOL WeaselPanel::Create(HWND parent) {
   m_hWnd = CreateWindowEx(
       WS_EX_TOOLWINDOW | WS_EX_TOPMOST | WS_EX_NOACTIVATE |
           WS_EX_NOREDIRECTIONBITMAP,
-      L"WeaselPanel", L"WeaselPanel", WS_POPUP | WS_CLIPSIBLINGS,
-      CW_USEDEFAULT, CW_USEDEFAULT, 10, 10, parent, nullptr, hInstance, this);
+      L"WeaselPanel", L"WeaselPanel", WS_POPUP | WS_CLIPSIBLINGS, CW_USEDEFAULT,
+      CW_USEDEFAULT, 10, 10, parent, nullptr, hInstance, this);
   if (m_hWnd) {
     if (!m_pD2D)
       m_pD2D = std::make_shared<D2D>(m_style);
@@ -282,7 +299,7 @@ BOOL WeaselPanel::Create(HWND parent) {
   return !!m_hWnd;
 }
 
-void WeaselPanel::_UpdateOffsetY(CRect &arc, CRect &prc) {
+void WeaselPanel::_UpdateOffsetY(CRect& arc, CRect& prc) {
   if (m_istorepos) {
     std::vector<CRect> rects(m_candidateCount);
     std::vector<int> btmys(m_candidateCount);
@@ -327,14 +344,14 @@ void WeaselPanel::DoPaint() {
         ((!m_ctx.empty() && !m_style.inline_preedit) ||
          (m_style.inline_preedit && (m_candidateCount || !m_ctx.aux.empty())));
     if (should_draw_background) {
-      CRect &rc = m_layout->GetContentRect();
+      CRect& rc = m_layout->GetContentRect();
       IsToRoundStruct roundInfo;
       _HighlightRect(rc, DPI_SCALE(m_style.round_corner_ex),
                      DPI_SCALE(m_style.border), m_style.back_color,
                      m_style.shadow_color, m_style.border_color, roundInfo);
     }
-    CRect &prc = m_layout->GetPreeditRect();
-    CRect &arc = m_layout->GetAuxiliaryRect();
+    CRect& prc = m_layout->GetPreeditRect();
+    CRect& arc = m_layout->GetAuxiliaryRect();
     // if vertical auto reverse triggered
     _UpdateOffsetY(arc, prc);
     if (!m_layout->IsInlinePreedit() && !m_ctx.preedit.empty()) {
@@ -355,7 +372,7 @@ void WeaselPanel::DoPaint() {
       LOADICON(current_half_icon, m_iconHalf, IDI_HALF_SHAPE);
 #undef LOADICON
 
-      HICON &ico =
+      HICON& ico =
           m_status.disabled ? m_iconDisabled
           : m_status.ascii_mode
               ? m_iconAlpha
@@ -375,7 +392,7 @@ void WeaselPanel::DoPaint() {
 
   HR(m_pD2D->dc->EndDraw());
   // Make the swap chain available to the composition engine
-  HRESULT hrPresent = m_pD2D->swapChain->Present(1, 0); // sync
+  HRESULT hrPresent = m_pD2D->swapChain->Present(1, 0);  // sync
   if (hrPresent == DXGI_ERROR_DEVICE_REMOVED ||
       hrPresent == DXGI_ERROR_DEVICE_RESET) {
     DEBUG << "Device lost during Present: " << HRESULTToString(hrPresent);
@@ -386,13 +403,13 @@ void WeaselPanel::DoPaint() {
   }
 }
 
-bool WeaselPanel::_DrawPreedit(const Text &text, bool isPreedit) {
+bool WeaselPanel::_DrawPreedit(const Text& text, bool isPreedit) {
   bool drawn = false;
-  wstring const &t = text.str;
-  PtTextFormat &pTextFormat = m_pD2D->pPreeditFormat;
+  wstring const& t = text.str;
+  PtTextFormat& pTextFormat = m_pD2D->pPreeditFormat;
 
   if (!t.empty()) {
-    const TextRange &range = m_layout->GetPreeditRange();
+    const TextRange& range = m_layout->GetPreeditRange();
     if (range.start < range.end) {
       auto before_str = t.substr(0, range.start);
       auto hilited_str = t.substr(range.start, range.end - range.start);
@@ -426,7 +443,7 @@ bool WeaselPanel::_DrawPreedit(const Text &text, bool isPreedit) {
         // zzz[yyy]
         CRect rc_hib = rc_hi;
         rc_hib.InflateRect(padx, pady);
-        const IsToRoundStruct &roundInfo = m_layout->GetTextRoundInfo();
+        const IsToRoundStruct& roundInfo = m_layout->GetTextRoundInfo();
         _HighlightRect(rc_hib, DPI_SCALE(m_style.round_corner),
                        DPI_SCALE(m_style.border), m_style.hilited_back_color,
                        m_style.hilited_shadow_color, 0, roundInfo);
@@ -489,18 +506,18 @@ CRect WeaselPanel::_GetInflatedCandRect(int i) {
 
 bool WeaselPanel::_DrawCandidates() {
   bool drawn = false;
-  const vector<Text> &candidates(m_ctx.cinfo.candies);
-  const vector<Text> &comments(m_ctx.cinfo.comments);
-  const vector<Text> &labels(m_ctx.cinfo.labels);
-  PtTextFormat &txtFormat = m_pD2D->pTextFormat;
-  PtTextFormat &labeltxtFormat = m_pD2D->pLabelFormat;
-  PtTextFormat &commenttxtFormat = m_pD2D->pCommentFormat;
+  const vector<Text>& candidates(m_ctx.cinfo.candies);
+  const vector<Text>& comments(m_ctx.cinfo.comments);
+  const vector<Text>& labels(m_ctx.cinfo.labels);
+  PtTextFormat& txtFormat = m_pD2D->pTextFormat;
+  PtTextFormat& labeltxtFormat = m_pD2D->pLabelFormat;
+  PtTextFormat& commenttxtFormat = m_pD2D->pCommentFormat;
   auto padx = DPI_SCALE(m_style.hilite_padding_x);
   auto pady = DPI_SCALE(m_style.hilite_padding_y);
   const auto hilitefunc = [&](int i, uint32_t back_color, uint32_t shadow_color,
                               uint32_t border_color, uint32_t border = 0) {
     auto rect = _GetInflatedCandRect(i);
-    const IsToRoundStruct &roundInfo = m_layout->GetRoundInfo(i);
+    const IsToRoundStruct& roundInfo = m_layout->GetRoundInfo(i);
     _HighlightRect(rect, DPI_SCALE(m_style.round_corner), DPI_SCALE(border),
                    back_color, shadow_color, border_color, roundInfo);
   };
@@ -521,9 +538,9 @@ bool WeaselPanel::_DrawCandidates() {
                HALF_ALPHA_COLOR(m_style.hilited_candidate_border_color));
   }
   // draw highlighted background and text
-  const auto drawText = [&](int i, const vector<Text> &texts, int color,
-                            PtTextFormat &textFormat, CRect rc) {
-    const auto &text = texts.at(i).str;
+  const auto drawText = [&](int i, const vector<Text>& texts, int color,
+                            PtTextFormat& textFormat, CRect rc) {
+    const auto& text = texts.at(i).str;
     if (COLORTRANSPARENT(color) || rc.IsRectNull() || text.empty() ||
         !textFormat.Get())
       return;
@@ -603,8 +620,11 @@ bool WeaselPanel::_DrawCandidates() {
   return drawn;
 }
 
-void WeaselPanel::_TextOut(CRect &rc, const wstring &text, size_t cch,
-                           uint32_t color, PtTextFormat &pTextFormat) {
+void WeaselPanel::_TextOut(CRect& rc,
+                           const wstring& text,
+                           size_t cch,
+                           uint32_t color,
+                           PtTextFormat& pTextFormat) {
   if (!pTextFormat.Get())
     return;
   m_pD2D->SetBrushColor(color);
@@ -612,7 +632,7 @@ void WeaselPanel::_TextOut(CRect &rc, const wstring &text, size_t cch,
   ComPtr<IDWriteTextLayout> pTextLayout;
   m_pD2D->m_pWriteFactory->CreateTextLayout(
       text.c_str(), cch, pTextFormat.Get(), rc.Width(), rc.Height(),
-      reinterpret_cast<IDWriteTextLayout **>(pTextLayout.GetAddressOf()));
+      reinterpret_cast<IDWriteTextLayout**>(pTextLayout.GetAddressOf()));
   if (m_style.layout_type == UIStyle::LAYOUT_VERTICAL_TEXT ||
       m_style.layout_type == UIStyle::LAYOUT_VERTICAL_TEXT_FULLSCREEN) {
     DWRITE_FLOW_DIRECTION flow = m_style.vertical_text_left_to_right
@@ -644,10 +664,13 @@ void WeaselPanel::_TextOut(CRect &rc, const wstring &text, size_t cch,
   //     m_pD2D->m_pBrush.Get(), 1.0f); // 1.0f is the border width
 }
 
-void WeaselPanel::_HighlightRect(const RECT &rect, float radius,
-                                 uint32_t border, uint32_t back_color,
-                                 uint32_t shadow_color, uint32_t border_color,
-                                 const IsToRoundStruct &roundInfo) {
+void WeaselPanel::_HighlightRect(const RECT& rect,
+                                 float radius,
+                                 uint32_t border,
+                                 uint32_t back_color,
+                                 uint32_t shadow_color,
+                                 uint32_t border_color,
+                                 const IsToRoundStruct& roundInfo) {
   if (roundInfo.Hemispherical)
     radius = DPI_SCALE(m_style.round_corner_ex) - DPI_SCALE(border) / 2.0f;
   // draw shadow
@@ -764,7 +787,7 @@ static HBITMAP CopyDCToBitmap(HDC hDC, LPRECT lpRect) {
   return hBitmap;
 }
 
-void WeaselPanel::_CaptureRect(CRect &rect) {
+void WeaselPanel::_CaptureRect(CRect& rect) {
   HDC ScreenDC = ::GetDC(NULL);
   CRect rc;
   GetWindowRect(m_hWnd, &rc);
@@ -955,57 +978,61 @@ LRESULT WeaselPanel::OnLeftClickDown(UINT uMsg, WPARAM wParam, LPARAM lParam) {
   return 0;
 }
 
-LRESULT CALLBACK WeaselPanel::WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam,
+LRESULT CALLBACK WeaselPanel::WindowProc(HWND hwnd,
+                                         UINT uMsg,
+                                         WPARAM wParam,
                                          LPARAM lParam) {
   if (uMsg == WM_NCCREATE) {
-    auto self = static_cast<WeaselPanel *>(
+    auto self = static_cast<WeaselPanel*>(
         reinterpret_cast<LPCREATESTRUCT>(lParam)->lpCreateParams);
     SetWindowLongPtr(hwnd, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(self));
   }
   auto self =
-      reinterpret_cast<WeaselPanel *>(GetWindowLongPtr(hwnd, GWLP_USERDATA));
+      reinterpret_cast<WeaselPanel*>(GetWindowLongPtr(hwnd, GWLP_USERDATA));
   if (self)
     return self->MsgHandler(hwnd, uMsg, wParam, lParam);
   return DefWindowProc(hwnd, uMsg, wParam, lParam);
 }
 
-LRESULT WeaselPanel::MsgHandler(HWND hwnd, UINT uMsg, WPARAM wParam,
+LRESULT WeaselPanel::MsgHandler(HWND hwnd,
+                                UINT uMsg,
+                                WPARAM wParam,
                                 LPARAM lParam) {
   switch (uMsg) {
-  case WM_PAINT:
-    DoPaint();
-    break;
-  case WM_DESTROY:
-    OnDestroy();
-    return 0;
-  case WM_NCDESTROY:
-    SetWindowLongPtr(hwnd, GWLP_USERDATA, 0);
-    return DefWindowProc(hwnd, uMsg, wParam, lParam);
-  case WM_MOUSEMOVE:
-    OnMouseMove(uMsg, wParam, lParam);
-    break;
-  case WM_MOUSEACTIVATE:
-    return OnMouseActive(uMsg, wParam, lParam);
-  case WM_MOUSEWHEEL:
-    return OnScroll(uMsg, wParam, lParam);
-  case WM_LBUTTONUP:
-    return OnLeftClickUp(uMsg, wParam, lParam);
-  case WM_LBUTTONDOWN:
-    return OnLeftClickDown(uMsg, wParam, lParam);
-  case WM_TIMER:
-    if (wParam == AUTOREV_TIMER) {
-      ::KillTimer(m_hWnd, AUTOREV_TIMER);
-      m_clickTimer = 0;
-      m_bar_scale = 1.0f;
-      InvalidateRect(m_hWnd, nullptr, TRUE);
+    case WM_PAINT:
+      DoPaint();
+      break;
+    case WM_DESTROY:
+      OnDestroy();
       return 0;
-    } else if (wParam == AUTOHIDE_TIMER) {
-      ::KillTimer(m_hWnd, AUTOHIDE_TIMER);
-      m_autoHideTimer = 0;
-      // hide the panel on auto-hide
-      ShowWindow(SW_HIDE);
-      return 0;
-    }
+    case WM_NCDESTROY:
+      SetWindowLongPtr(hwnd, GWLP_USERDATA, 0);
+      return DefWindowProc(hwnd, uMsg, wParam, lParam);
+    case WM_MOUSEMOVE:
+      OnMouseMove(uMsg, wParam, lParam);
+      break;
+    case WM_MOUSEACTIVATE:
+      return OnMouseActive(uMsg, wParam, lParam);
+    case WM_MOUSEWHEEL:
+      return OnScroll(uMsg, wParam, lParam);
+    case WM_LBUTTONUP:
+      return OnLeftClickUp(uMsg, wParam, lParam);
+    case WM_LBUTTONDOWN:
+      return OnLeftClickDown(uMsg, wParam, lParam);
+    case WM_TIMER:
+      if (wParam == AUTOREV_TIMER) {
+        ::KillTimer(m_hWnd, AUTOREV_TIMER);
+        m_clickTimer = 0;
+        m_bar_scale = 1.0f;
+        InvalidateRect(m_hWnd, nullptr, TRUE);
+        return 0;
+      } else if (wParam == AUTOHIDE_TIMER) {
+        ::KillTimer(m_hWnd, AUTOHIDE_TIMER);
+        m_autoHideTimer = 0;
+        // hide the panel on auto-hide
+        ShowWindow(SW_HIDE);
+        return 0;
+      }
   }
   return DefWindowProc(hwnd, uMsg, wParam, lParam);
 }

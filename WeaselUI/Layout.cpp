@@ -1,14 +1,21 @@
 #include "Layout.h"
 using namespace weasel;
 
-Layout::Layout(const UIStyle &style, const Context &context,
-               const Status &status, an<D2D> &pD2D)
-    : _style(style), _context(context), _status(status),
-      candidates(_context.cinfo.candies), comments(_context.cinfo.comments),
-      labels(_context.cinfo.labels), id(_context.cinfo.highlighted),
+Layout::Layout(const UIStyle& style,
+               const Context& context,
+               const Status& status,
+               an<D2D>& pD2D)
+    : _style(style),
+      _context(context),
+      _status(status),
+      candidates(_context.cinfo.candies),
+      comments(_context.cinfo.comments),
+      labels(_context.cinfo.labels),
+      id(_context.cinfo.highlighted),
       candidates_count((int)candidates.size()),
       labelFontValid(!!(_style.label_font_point > 0)),
-      textFontValid(!!(_style.font_point > 0)), _pD2D(pD2D),
+      textFontValid(!!(_style.font_point > 0)),
+      _pD2D(pD2D),
       cmtFontValid(!!(_style.comment_font_point > 0)) {
   if (pD2D) {
     float scale = pD2D->m_dpiScaleLayout;
