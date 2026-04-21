@@ -903,6 +903,7 @@ HRESULT D2D::FillGeometry(const CRect& rect,
     ComPtr<ID2D1BitmapRenderTarget> bitmapRenderTarget;
     HR(dc->CreateCompatibleRenderTarget(&bitmapRenderTarget));
     bitmapRenderTarget->BeginDraw();
+    bitmapRenderTarget->Clear(D2D1::ColorF(0, 0.0f));
     bitmapRenderTarget->FillGeometry(pGeometry.Get(), m_pBrush.Get());
     bitmapRenderTarget->EndDraw();
     // Get the bitmap from the bitmap render target
@@ -944,6 +945,7 @@ HRESULT D2D::DrawTextLayout(ComPtr<IDWriteTextLayout> pTextLayout,
     ComPtr<ID2D1BitmapRenderTarget> bitmapRenderTarget;
     HR(dc->CreateCompatibleRenderTarget(&bitmapRenderTarget));
     bitmapRenderTarget->BeginDraw();
+    bitmapRenderTarget->Clear(D2D1::ColorF(0, 0.0f));
     bitmapRenderTarget->DrawTextLayout(
         {x, y}, pTextLayout.Get(), m_pBrush.Get(),
         D2D1_DRAW_TEXT_OPTIONS_ENABLE_COLOR_FONT);
