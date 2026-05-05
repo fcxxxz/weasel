@@ -7,6 +7,14 @@ using namespace weasel;
 const wstring StandardLayout::_pre = L"<";
 const wstring StandardLayout::_next = L">";
 
+namespace {
+wstring FormatCandidateLabel(const wstring& label, const wchar_t* format) {
+  wchar_t buffer[128];
+  swprintf_s<128>(buffer, format, label.c_str());
+  return wstring(buffer);
+}
+}  // namespace
+
 CSize StandardLayout::_GetPreeditSize(const Text& text,
                                       ComPtr<IDWriteTextFormat1>& pTextFormat) {
   const wstring& preedit = text.str;
@@ -64,8 +72,10 @@ void StandardLayout::RecalculateSizes() {
   for (size_t i = 0; i < candidates.size(); ++i) {
     CSize labelSize(0, 0), textSize(0, 0), commentSize(0, 0);
     if (labelFontValid) {
-      _pD2D->GetTextSize(labels.at(i).str, labels.at(i).str.length(),
-                         _pD2D->pLabelFormat, &labelSize);
+      const auto label = FormatCandidateLabel(labels.at(i).str,
+                                              _style.label_text_format.c_str());
+      _pD2D->GetTextSize(label, label.length(), _pD2D->pLabelFormat,
+                         &labelSize);
     }
     if (textFontValid) {
       _pD2D->GetTextSize(candidates.at(i).str, candidates.at(i).str.length(),
