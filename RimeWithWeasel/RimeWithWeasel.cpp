@@ -41,7 +41,8 @@ RimeWithWeaselHandler::RimeWithWeaselHandler(UI* ui)
       m_current_dark_mode(false),
       m_global_ascii_mode(false),
       m_show_notifications_time(1200),
-      _UpdateUICallback(NULL) {
+      _UpdateUICallback(NULL),
+      m_tray_icon_signature() {
   m_ui->InServer() = true;
   rime_api = rime_get_api();
   assert(rime_api);
@@ -197,7 +198,6 @@ DWORD RimeWithWeaselHandler::AddSession(LPWSTR buffer, EatLine eat) {
     _LoadSchemaSpecificSettings(ipc_id, schema_id);
     _LoadAppInlinePreeditSet(ipc_id, true);
     _UpdateInlinePreeditStatus(ipc_id);
-    _RefreshTrayIcon(session_id, _UpdateUICallback);
     session_status.status = status;
     session_status.__synced = false;
     rime_api->free_status(&status);
@@ -475,12 +475,14 @@ void RimeWithWeaselHandler::_GetCandidateInfo(CandidateInfo& cinfo,
 void RimeWithWeaselHandler::StartMaintenance() {
   m_session_status_map.clear();
   Finalize();
+  _InvalidateTrayIconSignature();
   _UpdateUI(0);
 }
 
 void RimeWithWeaselHandler::EndMaintenance() {
   if (m_disabled) {
     Initialize();
+    _InvalidateTrayIconSignature();
     _UpdateUI(0);
   }
   m_session_status_map.clear();
@@ -541,7 +543,7 @@ void RimeWithWeaselHandler::_UpdateUI(WeaselSessionId ipc_id) {
     m_ui->Update(weasel_context, weasel_status);
   }
 
-  _RefreshTrayIcon(session_id, _UpdateUICallback);
+  _RefreshTrayIconIfNeeded(session_id);
 
   {
     std::lock_guard<std::mutex> lock(m_notifier_mutex);
@@ -550,6 +552,22 @@ void RimeWithWeaselHandler::_UpdateUI(WeaselSessionId ipc_id) {
     m_message_label.clear();
     m_option_name.clear();
   }
+}
+
+void RimeWithWeaselHandler::_RefreshTrayIconIfNeeded(
+    RimeSessionId session_id) {
+  if (!m_ui)
+    return;
+  RimeTrayIconSignature signature =
+      RimeTrayIconSignature::From(m_ui->style(), m_ui->status());
+  if (signature == m_tray_icon_signature)
+    return;
+  m_tray_icon_signature = signature;
+  _RefreshTrayIcon(session_id, _UpdateUICallback);
+}
+
+void RimeWithWeaselHandler::_InvalidateTrayIconSignature() {
+  m_tray_icon_signature = RimeTrayIconSignature();
 }
 
 void RimeWithWeaselHandler::_LoadSchemaSpecificSettings(
@@ -1458,8 +1476,6 @@ void RimeWithWeaselHandler::_GetStatus(Status& stat,
         if (session_status.style.inline_preedit != inline_preedit)
           // in case of inline_preedit set in schema
           _UpdateInlinePreeditStatus(ipc_id);
-        // refresh icon after schema changed
-        _RefreshTrayIcon(session_id, _UpdateUICallback);
         m_ui->style() = session_status.style;
         if (m_show_notifications.find("schema") != m_show_notifications.end() &&
             m_show_notifications_time > 0) {

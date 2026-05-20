@@ -57,6 +57,23 @@ int unit_main() {
   BOOST_TEST(weasel::IsKeyEventResultProcessed(eaten));
   BOOST_TEST(weasel::IsKeyEventResultEaten(eaten));
 
+  weasel::UIStyle style;
+  weasel::Status status;
+  auto signature = RimeTrayIconSignature::From(style, status);
+  BOOST_TEST(signature == RimeTrayIconSignature::From(style, status));
+
+  weasel::Status composing_status = status;
+  composing_status.composing = true;
+  BOOST_TEST(signature == RimeTrayIconSignature::From(style, composing_status));
+
+  weasel::Status ascii_status = status;
+  ascii_status.ascii_mode = true;
+  BOOST_TEST(signature != RimeTrayIconSignature::From(style, ascii_status));
+
+  weasel::UIStyle icon_style = style;
+  icon_style.current_zhung_icon = L"zh.ico";
+  BOOST_TEST(signature != RimeTrayIconSignature::From(icon_style, status));
+
   return boost::report_errors();
 }
 

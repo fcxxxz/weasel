@@ -33,6 +33,46 @@ struct SessionStatus {
 };
 typedef std::map<DWORD, SessionStatus> SessionStatusMap;
 typedef DWORD WeaselSessionId;
+
+struct RimeTrayIconSignature {
+  RimeTrayIconSignature()
+      : valid(false),
+        display_tray_icon(false),
+        disabled(false),
+        ascii_mode(false) {}
+
+  static RimeTrayIconSignature From(const weasel::UIStyle& style,
+                                    const weasel::Status& status) {
+    RimeTrayIconSignature signature;
+    signature.valid = true;
+    signature.display_tray_icon = style.display_tray_icon;
+    signature.disabled = status.disabled;
+    signature.ascii_mode = status.ascii_mode;
+    signature.current_zhung_icon = style.current_zhung_icon;
+    signature.current_ascii_icon = style.current_ascii_icon;
+    return signature;
+  }
+
+  bool operator==(const RimeTrayIconSignature& rhs) const {
+    return valid == rhs.valid &&
+           display_tray_icon == rhs.display_tray_icon &&
+           disabled == rhs.disabled && ascii_mode == rhs.ascii_mode &&
+           current_zhung_icon == rhs.current_zhung_icon &&
+           current_ascii_icon == rhs.current_ascii_icon;
+  }
+
+  bool operator!=(const RimeTrayIconSignature& rhs) const {
+    return !(*this == rhs);
+  }
+
+  bool valid;
+  bool display_tray_icon;
+  bool disabled;
+  bool ascii_mode;
+  std::wstring current_zhung_icon;
+  std::wstring current_ascii_icon;
+};
+
 class RimeWithWeaselHandler : public weasel::RequestHandler {
  public:
   RimeWithWeaselHandler(weasel::UI* ui);
@@ -84,6 +124,8 @@ class RimeWithWeaselHandler : public weasel::RequestHandler {
   void _UpdateShowNotifications(RimeConfig* config, bool initialize = false);
 
   void _UpdateInlinePreeditStatus(WeaselSessionId ipc_id);
+  void _RefreshTrayIconIfNeeded(RimeSessionId session_id);
+  void _InvalidateTrayIconSignature();
 
   RimeSessionId to_session_id(WeaselSessionId ipc_id) {
     return m_session_status_map[ipc_id].session_id;
@@ -120,4 +162,5 @@ class RimeWithWeaselHandler : public weasel::RequestHandler {
   bool m_global_ascii_mode;
   int m_show_notifications_time;
   DWORD m_pid;
+  RimeTrayIconSignature m_tray_icon_signature;
 };
