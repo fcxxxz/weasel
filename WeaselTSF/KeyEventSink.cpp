@@ -8,20 +8,21 @@ static weasel::KeyEvent prevKeyEvent;
 static BOOL prevfEaten = FALSE;
 static int keyCountToSimulate = 0;
 
-void WeaselTSF::_ProcessKeyEvent(WPARAM wParam, LPARAM lParam, BOOL* pfEaten) {
+bool WeaselTSF::_ProcessKeyEvent(WPARAM wParam, LPARAM lParam, BOOL* pfEaten) {
+  *pfEaten = FALSE;
   // when _IsKeyboardDisabled don't eat the key,
   // when keyboard closable and keyboard closed, don't eat the key
   if ((_isToOpenClose && !_IsKeyboardOpen()) || _IsKeyboardDisabled()) {
-    *pfEaten = FALSE;
-    return;
+    return false;
   }
 
   weasel::KeyEvent ke;
   GetKeyboardState(_lpbKeyState);
   if (!ConvertKeyEvent(static_cast<UINT>(wParam), lParam, _lpbKeyState, ke)) {
     /* Unknown key event */
-    *pfEaten = FALSE;
+    return false;
   } else {
+    bool processed = false;
     // cheet key code when vertical auto reverse happened, swap up and down
     if (_cand->GetIsReposition()) {
       if (ke.keycode == ibus::Up)
@@ -33,6 +34,7 @@ void WeaselTSF::_ProcessKeyEvent(WPARAM wParam, LPARAM lParam, BOOL* pfEaten) {
       bool eaten = false;
       if (m_client.ProcessKeyEvent(ke, &eaten)) {
         *pfEaten = (BOOL)eaten;
+        processed = true;
       } else {
         *pfEaten = FALSE;
         _RecoverServerAsync();
@@ -61,6 +63,7 @@ void WeaselTSF::_ProcessKeyEvent(WPARAM wParam, LPARAM lParam, BOOL* pfEaten) {
 
     prevfEaten = *pfEaten;
     prevKeyEvent = ke;
+    return processed;
   }
 }
 
@@ -80,9 +83,9 @@ STDAPI WeaselTSF::OnSetFocus(BOOL fForeground) {
  *  Some sends multiple OnTestKeyDown() for a single key event. (MS WORD 2010
  * x64)
  *
- * We assume every key event will eventually cause a OnKeyDown() call.
- * We use _fTestKeyDownPending to omit multiple OnTestKeyDown() calls,
- *  and for OnKeyDown() to check if the key has already been sent to the server.
+ * Test-key results are cached only for the same key direction and identical
+ * wParam/lParam pair. This avoids sending repeated test/key calls for the
+ * same physical event to Rime, including the common eaten=false path.
  */
 
 STDAPI WeaselTSF::OnTestKeyDown(ITfContext* pContext,
@@ -90,14 +93,17 @@ STDAPI WeaselTSF::OnTestKeyDown(ITfContext* pContext,
                                 LPARAM lParam,
                                 BOOL* pfEaten) {
   _fTestKeyUpPending = FALSE;
-  if (_fTestKeyDownPending) {
-    *pfEaten = TRUE;
+  if (_keyEventTestCache.Matches(false, wParam, lParam)) {
+    *pfEaten = _keyEventTestCache.Eaten();
     return S_OK;
   }
-  _ProcessKeyEvent(wParam, lParam, pfEaten);
+  bool processed = _ProcessKeyEvent(wParam, lParam, pfEaten);
   _UpdateComposition(pContext);
-  if (*pfEaten)
-    _fTestKeyDownPending = TRUE;
+  if (processed)
+    _keyEventTestCache.Store(false, wParam, lParam, *pfEaten);
+  else
+    _keyEventTestCache.Clear();
+  _fTestKeyDownPending = (processed && *pfEaten) ? TRUE : FALSE;
   return S_OK;
 }
 
@@ -106,10 +112,13 @@ STDAPI WeaselTSF::OnKeyDown(ITfContext* pContext,
                             LPARAM lParam,
                             BOOL* pfEaten) {
   _fTestKeyUpPending = FALSE;
-  if (_fTestKeyDownPending) {
+  if (_keyEventTestCache.Matches(false, wParam, lParam)) {
+    *pfEaten = _keyEventTestCache.Eaten();
+    _keyEventTestCache.Clear();
     _fTestKeyDownPending = FALSE;
-    *pfEaten = TRUE;
   } else {
+    _keyEventTestCache.Clear();
+    _fTestKeyDownPending = FALSE;
     _ProcessKeyEvent(wParam, lParam, pfEaten);
     _UpdateComposition(pContext);
   }
@@ -121,14 +130,17 @@ STDAPI WeaselTSF::OnTestKeyUp(ITfContext* pContext,
                               LPARAM lParam,
                               BOOL* pfEaten) {
   _fTestKeyDownPending = FALSE;
-  if (_fTestKeyUpPending) {
-    *pfEaten = TRUE;
+  if (_keyEventTestCache.Matches(true, wParam, lParam)) {
+    *pfEaten = _keyEventTestCache.Eaten();
     return S_OK;
   }
-  _ProcessKeyEvent(wParam, lParam, pfEaten);
+  bool processed = _ProcessKeyEvent(wParam, lParam, pfEaten);
   _UpdateComposition(pContext);
-  if (*pfEaten)
-    _fTestKeyUpPending = TRUE;
+  if (processed)
+    _keyEventTestCache.Store(true, wParam, lParam, *pfEaten);
+  else
+    _keyEventTestCache.Clear();
+  _fTestKeyUpPending = (processed && *pfEaten) ? TRUE : FALSE;
   return S_OK;
 }
 
@@ -137,10 +149,13 @@ STDAPI WeaselTSF::OnKeyUp(ITfContext* pContext,
                           LPARAM lParam,
                           BOOL* pfEaten) {
   _fTestKeyDownPending = FALSE;
-  if (_fTestKeyUpPending) {
+  if (_keyEventTestCache.Matches(true, wParam, lParam)) {
+    *pfEaten = _keyEventTestCache.Eaten();
+    _keyEventTestCache.Clear();
     _fTestKeyUpPending = FALSE;
-    *pfEaten = TRUE;
   } else {
+    _keyEventTestCache.Clear();
+    _fTestKeyUpPending = FALSE;
     _ProcessKeyEvent(wParam, lParam, pfEaten);
     if (!_async_edit)
       _UpdateComposition(pContext);

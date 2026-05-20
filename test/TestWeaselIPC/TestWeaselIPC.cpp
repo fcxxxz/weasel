@@ -92,6 +92,20 @@ int unit_main() {
   BOOST_TEST(!status_snapshot.status.disabled);
   BOOST_TEST(status_snapshot.status.full_shape);
 
+  weasel::KeyEventTestCache key_cache;
+  BOOST_TEST(!key_cache.Matches(false, 'A', 0x1e0001));
+  key_cache.Store(false, 'A', 0x1e0001, FALSE);
+  BOOST_TEST(key_cache.Matches(false, 'A', 0x1e0001));
+  BOOST_TEST(!key_cache.Eaten());
+  BOOST_TEST(!key_cache.Matches(true, 'A', 0x1e0001));
+  BOOST_TEST(!key_cache.Matches(false, 'B', 0x1e0001));
+  BOOST_TEST(!key_cache.Matches(false, 'A', 0x1f0001));
+  key_cache.Store(true, 'A', 0x9e0001, TRUE);
+  BOOST_TEST(key_cache.Matches(true, 'A', 0x9e0001));
+  BOOST_TEST(key_cache.Eaten());
+  key_cache.Clear();
+  BOOST_TEST(!key_cache.Matches(true, 'A', 0x9e0001));
+
   return boost::report_errors();
 }
 

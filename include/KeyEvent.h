@@ -25,6 +25,37 @@ struct KeyEvent {
     return *reinterpret_cast<UINT32 const*>(this);
   }
 };
+
+struct KeyEventTestCache {
+  KeyEventTestCache()
+      : valid(false), key_up(false), w_param(0), l_param(0), eaten(FALSE) {}
+
+  bool Matches(bool is_key_up, WPARAM wParam, LPARAM lParam) const {
+    return valid && key_up == is_key_up && w_param == wParam &&
+           l_param == lParam;
+  }
+
+  void Store(bool is_key_up, WPARAM wParam, LPARAM lParam, BOOL is_eaten) {
+    valid = true;
+    key_up = is_key_up;
+    w_param = wParam;
+    l_param = lParam;
+    eaten = is_eaten ? TRUE : FALSE;
+  }
+
+  BOOL Eaten() const { return eaten; }
+
+  void Clear() {
+    valid = false;
+    eaten = FALSE;
+  }
+
+  bool valid;
+  bool key_up;
+  WPARAM w_param;
+  LPARAM l_param;
+  BOOL eaten;
+};
 }  // namespace weasel
 
 bool ConvertKeyEvent(UINT vkey,
