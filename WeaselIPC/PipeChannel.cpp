@@ -38,6 +38,25 @@ bool PipeChannelBase::_Ensure() {
   return true;
 }
 
+bool PipeChannelBase::_EnsureOnce() {
+  try {
+    HANDLE* phandle = _GetPipeHandle();
+    if (_Invalid(*phandle)) {
+      *phandle = _TryConnect();
+      if (_Invalid(*phandle))
+        return false;
+      DWORD mode = PIPE_READMODE_MESSAGE;
+      if (!SetNamedPipeHandleState(*phandle, &mode, NULL, NULL)) {
+        _ThrowLastError;
+      }
+    }
+  } catch (...) {
+    return false;
+  }
+
+  return true;
+}
+
 HANDLE PipeChannelBase::_Connect(const wchar_t* name) {
   HANDLE pipe = INVALID_HANDLE_VALUE;
   while (_Invalid(pipe = _TryConnect()))
@@ -68,12 +87,13 @@ HANDLE PipeChannelBase::_TryConnect() {
   return INVALID_HANDLE_VALUE;
 }
 
-size_t PipeChannelBase::_WritePipe(HANDLE pipe, size_t s, char* b) {
+size_t PipeChannelBase::_WritePipe(HANDLE pipe, size_t s, char* b, bool flush) {
   DWORD lwritten;
   if (!::WriteFile(pipe, b, s, &lwritten, NULL) || lwritten <= 0) {
     _ThrowLastError;
   }
-  ::FlushFileBuffers(pipe);
+  if (flush)
+    ::FlushFileBuffers(pipe);
   return lwritten;
 }
 

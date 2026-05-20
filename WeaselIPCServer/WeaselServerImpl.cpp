@@ -225,6 +225,20 @@ DWORD ServerImpl::OnKeyEvent(WEASEL_IPC_COMMAND uMsg,
   return m_pRequestHandler->ProcessKeyEvent(KeyEvent(wParam), lParam, eat);
 }
 
+DWORD ServerImpl::OnKeyEventWithStatus(WEASEL_IPC_COMMAND uMsg,
+                                       DWORD wParam,
+                                       DWORD lParam) {
+  if (!m_pRequestHandler || !m_pRequestHandler->FindSession(lParam))
+    return 0;
+
+  auto eat = [this](std::wstring& msg) -> bool {
+    *channel << msg;
+    return true;
+  };
+  BOOL eaten = m_pRequestHandler->ProcessKeyEvent(KeyEvent(wParam), lParam, eat);
+  return MakeKeyEventResult(eaten);
+}
+
 DWORD ServerImpl::OnShutdownServer(WEASEL_IPC_COMMAND uMsg,
                                    DWORD wParam,
                                    DWORD lParam) {
@@ -397,6 +411,8 @@ void ServerImpl::HandlePipeMessage(PipeMessage pipe_msg, _Resp resp) {
                   OnHighlightCandidateOnCurrentPage);
   PIPE_MSG_HANDLE(WEASEL_IPC_CHANGE_PAGE, OnChangePage);
   PIPE_MSG_HANDLE(WEASEL_IPC_TRAY_COMMAND, OnCommand);
+  PIPE_MSG_HANDLE(WEASEL_IPC_PROCESS_KEY_EVENT_WITH_STATUS,
+                  OnKeyEventWithStatus);
   END_MAP_PIPE_MSG_HANDLE(result);
 
   resp(result);

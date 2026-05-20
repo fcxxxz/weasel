@@ -16,11 +16,6 @@ void WeaselTSF::_ProcessKeyEvent(WPARAM wParam, LPARAM lParam, BOOL* pfEaten) {
     return;
   }
 
-  // if server connection is Not OK, don't eat it.
-  if (!_EnsureServerConnected()) {
-    *pfEaten = FALSE;
-    return;
-  }
   weasel::KeyEvent ke;
   GetKeyboardState(_lpbKeyState);
   if (!ConvertKeyEvent(static_cast<UINT>(wParam), lParam, _lpbKeyState, ke)) {
@@ -34,8 +29,15 @@ void WeaselTSF::_ProcessKeyEvent(WPARAM wParam, LPARAM lParam, BOOL* pfEaten) {
       else if (ke.keycode == ibus::Down)
         ke.keycode = ibus::Up;
     }
-    if (!keyCountToSimulate)
-      *pfEaten = (BOOL)m_client.ProcessKeyEvent(ke);
+    if (!keyCountToSimulate) {
+      bool eaten = false;
+      if (m_client.ProcessKeyEvent(ke, &eaten)) {
+        *pfEaten = (BOOL)eaten;
+      } else {
+        *pfEaten = FALSE;
+        _RecoverServerAsync();
+      }
+    }
 
     if (ke.keycode == ibus::Caps_Lock) {
       if (prevKeyEvent.keycode == ibus::Caps_Lock && prevfEaten == TRUE &&

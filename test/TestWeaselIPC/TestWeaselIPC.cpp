@@ -5,6 +5,7 @@
 #include <WeaselIPC.h>
 #include <RimeWithWeasel.h>
 
+#include <boost/detail/lightweight_test.hpp>
 #include <boost/interprocess/streams/bufferstream.hpp>
 using namespace boost::interprocess;
 
@@ -16,6 +17,7 @@ CAppModule _Module;
 int console_main();
 int client_main();
 int server_main();
+int unit_main();
 
 // usage: TestWeaselIPC.exe [/start | /stop | /console]
 
@@ -36,9 +38,26 @@ int _tmain(int argc, _TCHAR* argv[]) {
   } else if (argc > 1 && !wcscmp(L"/console", argv[1])) {
     return console_main();
     return 0;
+  } else if (argc > 1 && !wcscmp(L"/unit", argv[1])) {
+    return unit_main();
   }
 
   return -1;
+}
+
+int unit_main() {
+  BOOST_TEST(!weasel::IsKeyEventResultProcessed(0));
+  BOOST_TEST(!weasel::IsKeyEventResultEaten(0));
+
+  DWORD not_eaten = weasel::MakeKeyEventResult(FALSE);
+  BOOST_TEST(weasel::IsKeyEventResultProcessed(not_eaten));
+  BOOST_TEST(!weasel::IsKeyEventResultEaten(not_eaten));
+
+  DWORD eaten = weasel::MakeKeyEventResult(TRUE);
+  BOOST_TEST(weasel::IsKeyEventResultProcessed(eaten));
+  BOOST_TEST(weasel::IsKeyEventResultEaten(eaten));
+
+  return boost::report_errors();
 }
 
 bool launch_server() {

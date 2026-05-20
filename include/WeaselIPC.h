@@ -32,10 +32,29 @@ enum WEASEL_IPC_COMMAND {
   WEASEL_IPC_SELECT_CANDIDATE_ON_CURRENT_PAGE,
   WEASEL_IPC_HIGHLIGHT_CANDIDATE_ON_CURRENT_PAGE,
   WEASEL_IPC_CHANGE_PAGE,
+  WEASEL_IPC_PROCESS_KEY_EVENT_WITH_STATUS,
   WEASEL_IPC_LAST_COMMAND
 };
 
 namespace weasel {
+enum WEASEL_IPC_KEY_EVENT_RESULT {
+  WEASEL_IPC_KEY_EVENT_PROCESSED = 0x01,
+  WEASEL_IPC_KEY_EVENT_EATEN = 0x02
+};
+
+inline DWORD MakeKeyEventResult(BOOL eaten) {
+  return WEASEL_IPC_KEY_EVENT_PROCESSED |
+         (eaten ? WEASEL_IPC_KEY_EVENT_EATEN : 0);
+}
+
+inline bool IsKeyEventResultProcessed(DWORD result) {
+  return (result & WEASEL_IPC_KEY_EVENT_PROCESSED) != 0;
+}
+
+inline bool IsKeyEventResultEaten(DWORD result) {
+  return (result & WEASEL_IPC_KEY_EVENT_EATEN) != 0;
+}
+
 struct PipeMessage {
   WEASEL_IPC_COMMAND Msg;
   DWORD wParam;
@@ -122,6 +141,7 @@ class Client {
   bool Echo();
   // 请求服务处理按键消息
   bool ProcessKeyEvent(KeyEvent const& keyEvent);
+  bool ProcessKeyEvent(KeyEvent const& keyEvent, bool* eaten);
   // 上屏正在編輯的文字
   bool CommitComposition();
   // 清除正在編輯的文字

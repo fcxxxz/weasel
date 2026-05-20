@@ -18,6 +18,7 @@ class ClientImpl {
   void EndMaintenance();
   bool Echo();
   bool ProcessKeyEvent(KeyEvent const& keyEvent);
+  bool ProcessKeyEvent(KeyEvent const& keyEvent, bool* eaten);
   bool CommitComposition();
   bool ClearComposition();
   bool SelectCandidateOnCurrentPage(size_t index);
@@ -34,6 +35,10 @@ class ClientImpl {
   bool _WriteClientInfo();
 
   LRESULT _SendMessage(WEASEL_IPC_COMMAND Msg, DWORD wParam, DWORD lParam);
+  bool _TrySendMessage(WEASEL_IPC_COMMAND Msg,
+                       DWORD wParam,
+                       DWORD lParam,
+                       DWORD* result);
 
   bool _Connected() const { return channel.Connected(); }
   bool _Active() const { return channel.Connected() && session_id != 0; }
@@ -42,8 +47,9 @@ class ClientImpl {
   UINT session_id;
   std::wstring app_name;
   bool is_ime;
+  bool has_input_position;
+  DWORD last_input_position;
 
   PipeChannel<PipeMessage> channel;
 };
-
 }  // namespace weasel

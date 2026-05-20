@@ -189,6 +189,7 @@ class WeaselTSF : public ITfTextInputProcessorEx,
   HRESULT _HandleCompartment(REFGUID guidCompartment);
 
   void _Reconnect();
+  void _RecoverServerAsync();
   std::wstring _GetRootDir();
 
   bool isImmersive() const {
@@ -233,4 +234,5 @@ class WeaselTSF : public ITfTextInputProcessorEx,
   BOOL _async_edit = false;
   BOOL _committed = false;
   BOOL _isToOpenClose = false;
+  volatile LONG _recoveringServer = 0;
 };

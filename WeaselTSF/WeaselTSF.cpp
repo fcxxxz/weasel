@@ -174,8 +174,9 @@ STDMETHODIMP WeaselTSF::OnSetThreadFocus() {
   RegGetStringValue(HKEY_CURRENT_USER, L"Software\\Rime\\weasel",
                     L"ToggleImeOnOpenClose", _ToggleImeOnOpenClose);
   _isToOpenClose = (_ToggleImeOnOpenClose == L"yes");
-  if (m_client.Echo()) {
-    m_client.ProcessKeyEvent(0);
+  if (_EnsureServerConnected()) {
+    bool eaten = false;
+    m_client.ProcessKeyEvent(0, &eaten);
     weasel::ResponseParser parser(NULL, NULL, &_status, NULL, &_cand->style());
     bool ok = m_client.GetResponseData(std::ref(parser));
     if (ok)
@@ -230,6 +231,27 @@ void WeaselTSF::_Reconnect() {
   bool ok = m_client.GetResponseData(std::ref(parser));
   if (ok) {
     _UpdateLanguageBar(_status);
+  }
+}
+
+void WeaselTSF::_RecoverServerAsync() {
+  if (InterlockedCompareExchange(&_recoveringServer, 1, 0) != 0)
+    return;
+
+  AddRef();
+  try {
+    std::thread th([this]() {
+      try {
+        _EnsureServerConnected();
+      } catch (...) {
+      }
+      InterlockedExchange(&_recoveringServer, 0);
+      Release();
+    });
+    th.detach();
+  } catch (...) {
+    InterlockedExchange(&_recoveringServer, 0);
+    Release();
   }
 }
 

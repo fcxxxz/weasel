@@ -5,7 +5,11 @@
 using namespace weasel;
 
 ClientImpl::ClientImpl()
-    : session_id(0), channel(GetPipeName()), is_ime(false) {
+    : session_id(0),
+      channel(GetPipeName()),
+      is_ime(false),
+      has_input_position(false),
+      last_input_position(0) {
   _InitializeClientInfo();
 }
 
@@ -62,6 +66,23 @@ bool ClientImpl::ProcessKeyEvent(KeyEvent const& keyEvent) {
   LRESULT ret =
       _SendMessage(WEASEL_IPC_PROCESS_KEY_EVENT, keyEvent, session_id);
   return ret != 0;
+}
+
+bool ClientImpl::ProcessKeyEvent(KeyEvent const& keyEvent, bool* eaten) {
+  if (eaten)
+    *eaten = false;
+  if (session_id == 0)
+    return false;
+
+  DWORD result = 0;
+  if (!_TrySendMessage(WEASEL_IPC_PROCESS_KEY_EVENT_WITH_STATUS, keyEvent,
+                       session_id, &result))
+    return false;
+  if (!IsKeyEventResultProcessed(result))
+    return false;
+  if (eaten)
+    *eaten = IsKeyEventResultEaten(result);
+  return true;
 }
 
 bool ClientImpl::CommitComposition() {
@@ -126,7 +147,15 @@ void ClientImpl::UpdateInputPosition(RECT const& rc) {
   int height = max(0, min(127, (rc.bottom - rc.top) >> hi_res));
   DWORD compressed_rect = ((hi_res & 0x01) << 31) | ((height & 0x7f) << 24) |
                           ((top & 0xfff) << 12) | (left & 0xfff);
-  _SendMessage(WEASEL_IPC_UPDATE_INPUT_POS, compressed_rect, session_id);
+  if (has_input_position && last_input_position == compressed_rect)
+    return;
+
+  DWORD result = 0;
+  if (_TrySendMessage(WEASEL_IPC_UPDATE_INPUT_POS, compressed_rect, session_id,
+                      &result)) {
+    has_input_position = true;
+    last_input_position = compressed_rect;
+  }
 }
 
 void ClientImpl::FocusIn() {
@@ -201,6 +230,16 @@ LRESULT ClientImpl::_SendMessage(WEASEL_IPC_COMMAND Msg,
   }
 }
 
+bool ClientImpl::_TrySendMessage(WEASEL_IPC_COMMAND Msg,
+                                 DWORD wParam,
+                                 DWORD lParam,
+                                 DWORD* result) {
+  if (!result)
+    return false;
+  PipeMessage req{Msg, wParam, lParam};
+  return channel.TryTransact(req, result);
+}
+
 Client::Client() : m_pImpl(new ClientImpl()) {}
 
 Client::~Client() {
@@ -222,6 +261,10 @@ void Client::ShutdownServer() {
 
 bool Client::ProcessKeyEvent(KeyEvent const& keyEvent) {
   return m_pImpl->ProcessKeyEvent(keyEvent);
+}
+
+bool Client::ProcessKeyEvent(KeyEvent const& keyEvent, bool* eaten) {
+  return m_pImpl->ProcessKeyEvent(keyEvent, eaten);
 }
 
 bool Client::CommitComposition() {
