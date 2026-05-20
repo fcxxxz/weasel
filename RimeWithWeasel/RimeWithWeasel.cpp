@@ -527,7 +527,7 @@ void RimeWithWeaselHandler::_UpdateUI(
   if (!m_ui)
     return;
 
-  Status& weasel_status = m_ui->status();
+  Status weasel_status = m_ui->status();
   Context weasel_context;
 
   RimeSessionId session_id = to_session_id(ipc_id);
@@ -547,7 +547,9 @@ void RimeWithWeaselHandler::_UpdateUI(
   else
     session_status.style.client_caps &= ~INLINE_PREEDIT_CAPABLE;
 
-  if (!_ShowMessage(weasel_context, weasel_status)) {
+  if (!_ShowMessage(weasel_context, weasel_status) &&
+      RimeUiNeedsUpdate(m_ui->ctx(), m_ui->status(), weasel_context,
+                        weasel_status)) {
     m_ui->Hide();
     m_ui->Update(weasel_context, weasel_status);
   }

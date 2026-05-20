@@ -97,6 +97,13 @@ struct RimeUiStatusSnapshot {
   weasel::Status status;
 };
 
+inline bool RimeUiNeedsUpdate(weasel::Context current_context,
+                              weasel::Status current_status,
+                              weasel::Context next_context,
+                              weasel::Status next_status) {
+  return current_context != next_context || !(current_status == next_status);
+}
+
 class RimeWithWeaselHandler : public weasel::RequestHandler {
  public:
   RimeWithWeaselHandler(weasel::UI* ui);

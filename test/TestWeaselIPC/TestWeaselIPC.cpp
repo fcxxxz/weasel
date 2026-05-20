@@ -106,6 +106,21 @@ int unit_main() {
   key_cache.Clear();
   BOOST_TEST(!key_cache.Matches(true, 'A', 0x9e0001));
 
+  weasel::Context current_context;
+  weasel::Status current_status;
+  BOOST_TEST(!RimeUiNeedsUpdate(current_context, current_status,
+                                current_context, current_status));
+
+  weasel::Context next_context = current_context;
+  next_context.aux.str = L"tip";
+  BOOST_TEST(RimeUiNeedsUpdate(current_context, current_status, next_context,
+                               current_status));
+
+  weasel::Status next_status = current_status;
+  next_status.ascii_mode = true;
+  BOOST_TEST(RimeUiNeedsUpdate(current_context, current_status,
+                               current_context, next_status));
+
   return boost::report_errors();
 }
 
