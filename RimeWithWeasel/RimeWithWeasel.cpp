@@ -285,8 +285,9 @@ BOOL RimeWithWeaselHandler::ProcessKeyEvent(KeyEvent keyEvent,
       rime_api->set_option(session_id, "ascii_mode", True);
     }
   }
-  _Respond(ipc_id, eat);
-  _UpdateUI(ipc_id);
+  RimeUiStatusSnapshot status_snapshot;
+  _Respond(ipc_id, eat, &status_snapshot);
+  _UpdateUI(ipc_id, &status_snapshot);
   m_active_session = ipc_id;
   return (BOOL)handled;
 }
@@ -327,8 +328,9 @@ bool RimeWithWeaselHandler::HighlightCandidateOnCurrentPage(
              << ", index = " << index;
   bool res = rime_api->highlight_candidate_on_current_page(
       to_session_id(ipc_id), index);
-  _Respond(ipc_id, eat);
-  _UpdateUI(ipc_id);
+  RimeUiStatusSnapshot status_snapshot;
+  _Respond(ipc_id, eat, &status_snapshot);
+  _UpdateUI(ipc_id, &status_snapshot);
   return res;
 }
 
@@ -338,8 +340,9 @@ bool RimeWithWeaselHandler::ChangePage(bool backward,
   DLOG(INFO) << "change page, ipc_id = " << ipc_id
              << (backward ? "backward" : "foreward");
   bool res = rime_api->change_page(to_session_id(ipc_id), backward);
-  _Respond(ipc_id, eat);
-  _UpdateUI(ipc_id);
+  RimeUiStatusSnapshot status_snapshot;
+  _Respond(ipc_id, eat, &status_snapshot);
+  _UpdateUI(ipc_id, &status_snapshot);
   return res;
 }
 
@@ -517,7 +520,9 @@ bool RimeWithWeaselHandler::_IsDeployerRunning() {
   return deployer_detected;
 }
 
-void RimeWithWeaselHandler::_UpdateUI(WeaselSessionId ipc_id) {
+void RimeWithWeaselHandler::_UpdateUI(
+    WeaselSessionId ipc_id,
+    const RimeUiStatusSnapshot* status_snapshot) {
   // if m_ui nullptr, _UpdateUI meaningless
   if (!m_ui)
     return;
@@ -530,7 +535,11 @@ void RimeWithWeaselHandler::_UpdateUI(WeaselSessionId ipc_id) {
   if (ipc_id == 0)
     weasel_status.disabled = m_disabled;
 
-  _GetStatus(weasel_status, ipc_id, weasel_context);
+  if (status_snapshot && status_snapshot->has_status)
+    _ApplyStatusSnapshot(weasel_status, ipc_id, weasel_context,
+                         *status_snapshot);
+  else
+    _GetStatus(weasel_status, ipc_id, weasel_context);
 
   SessionStatus& session_status = get_session_status(ipc_id);
   if (rime_api->get_option(session_id, "inline_preedit"))
@@ -753,7 +762,10 @@ inline std::string _GetLabelText(const std::vector<Text>& labels,
   return wtou8(std::wstring(buffer));
 }
 
-bool RimeWithWeaselHandler::_Respond(WeaselSessionId ipc_id, EatLine eat) {
+bool RimeWithWeaselHandler::_Respond(
+    WeaselSessionId ipc_id,
+    EatLine eat,
+    RimeUiStatusSnapshot* status_snapshot) {
   std::wstring body;
   body.reserve(4096);
   std::vector<const char*> actions;
@@ -773,6 +785,9 @@ bool RimeWithWeaselHandler::_Respond(WeaselSessionId ipc_id, EatLine eat) {
   RIME_STRUCT(RimeStatus, status);
   static const std::wstring Bool_wstring[] = {L"0", L"1"};
   if (rime_api->get_status(session_id, &status)) {
+    RimeUiStatusSnapshot snapshot = RimeUiStatusSnapshot::From(status);
+    if (status_snapshot)
+      *status_snapshot = snapshot;
     is_composing = !!status.is_composing;
     actions.push_back("status");
     body.append(L"status.ascii_mode=")
@@ -1457,35 +1472,46 @@ void RimeWithWeaselHandler::_GetStatus(Status& stat,
   RimeSessionId session_id = session_status.session_id;
   RIME_STRUCT(RimeStatus, status);
   if (rime_api->get_status(session_id, &status)) {
-    std::string schema_id = "";
-    if (status.schema_id)
-      schema_id = status.schema_id;
-    stat.schema_name = u8tow(status.schema_name);
-    stat.schema_id = u8tow(status.schema_id);
-    stat.ascii_mode = !!status.is_ascii_mode;
-    stat.composing = !!status.is_composing;
-    stat.disabled = !!status.is_disabled;
-    stat.full_shape = !!status.is_full_shape;
-    if (schema_id != m_last_schema_id) {
-      session_status.__synced = false;
-      m_last_schema_id = schema_id;
-      if (schema_id != ".default") {  // don't load for schema select menu
-        bool inline_preedit = session_status.style.inline_preedit;
-        _LoadSchemaSpecificSettings(ipc_id, schema_id);
-        _LoadAppInlinePreeditSet(ipc_id, true);
-        if (session_status.style.inline_preedit != inline_preedit)
-          // in case of inline_preedit set in schema
-          _UpdateInlinePreeditStatus(ipc_id);
-        m_ui->style() = session_status.style;
-        if (m_show_notifications.find("schema") != m_show_notifications.end() &&
-            m_show_notifications_time > 0) {
-          ctx.aux.str = stat.schema_name;
-          m_ui->Update(ctx, stat);
-          m_ui->ShowWithTimeout(m_show_notifications_time);
-        }
+    RimeUiStatusSnapshot snapshot = RimeUiStatusSnapshot::From(status);
+    _ApplyStatusSnapshot(stat, ipc_id, ctx, snapshot);
+    rime_api->free_status(&status);
+  }
+}
+
+void RimeWithWeaselHandler::_ApplyStatusSnapshot(
+    Status& stat,
+    WeaselSessionId ipc_id,
+    Context& ctx,
+    const RimeUiStatusSnapshot& snapshot) {
+  if (!snapshot.has_status)
+    return;
+
+  SessionStatus& session_status = get_session_status(ipc_id);
+  stat.schema_name = snapshot.status.schema_name;
+  stat.schema_id = snapshot.status.schema_id;
+  stat.ascii_mode = snapshot.status.ascii_mode;
+  stat.composing = snapshot.status.composing;
+  stat.disabled = snapshot.status.disabled;
+  stat.full_shape = snapshot.status.full_shape;
+
+  if (snapshot.schema_id != m_last_schema_id) {
+    session_status.__synced = false;
+    m_last_schema_id = snapshot.schema_id;
+    if (snapshot.schema_id != ".default") {  // don't load for schema select menu
+      bool inline_preedit = session_status.style.inline_preedit;
+      _LoadSchemaSpecificSettings(ipc_id, snapshot.schema_id);
+      _LoadAppInlinePreeditSet(ipc_id, true);
+      if (session_status.style.inline_preedit != inline_preedit)
+        // in case of inline_preedit set in schema
+        _UpdateInlinePreeditStatus(ipc_id);
+      m_ui->style() = session_status.style;
+      if (m_show_notifications.find("schema") != m_show_notifications.end() &&
+          m_show_notifications_time > 0) {
+        ctx.aux.str = stat.schema_name;
+        m_ui->Update(ctx, stat);
+        m_ui->ShowWithTimeout(m_show_notifications_time);
       }
     }
-    rime_api->free_status(&status);
   }
 }
 

@@ -74,6 +74,24 @@ int unit_main() {
   icon_style.current_zhung_icon = L"zh.ico";
   BOOST_TEST(signature != RimeTrayIconSignature::From(icon_style, status));
 
+  RIME_STRUCT(RimeStatus, rime_status);
+  rime_status.schema_id = "luna_pinyin";
+  rime_status.schema_name = "Luna Pinyin";
+  rime_status.is_ascii_mode = True;
+  rime_status.is_composing = True;
+  rime_status.is_disabled = False;
+  rime_status.is_full_shape = True;
+
+  auto status_snapshot = RimeUiStatusSnapshot::From(rime_status);
+  BOOST_TEST(status_snapshot.has_status);
+  BOOST_TEST(status_snapshot.schema_id == "luna_pinyin");
+  BOOST_TEST(status_snapshot.status.schema_id == L"luna_pinyin");
+  BOOST_TEST(status_snapshot.status.schema_name == L"Luna Pinyin");
+  BOOST_TEST(status_snapshot.status.ascii_mode);
+  BOOST_TEST(status_snapshot.status.composing);
+  BOOST_TEST(!status_snapshot.status.disabled);
+  BOOST_TEST(status_snapshot.status.full_shape);
+
   return boost::report_errors();
 }
 

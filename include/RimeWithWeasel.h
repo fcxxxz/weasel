@@ -73,6 +73,30 @@ struct RimeTrayIconSignature {
   std::wstring current_ascii_icon;
 };
 
+struct RimeUiStatusSnapshot {
+  RimeUiStatusSnapshot() : has_status(false) {}
+
+  static RimeUiStatusSnapshot From(const RimeStatus& rime_status) {
+    RimeUiStatusSnapshot snapshot;
+    const char* schema_id = rime_status.schema_id ? rime_status.schema_id : "";
+    const char* schema_name =
+        rime_status.schema_name ? rime_status.schema_name : "";
+    snapshot.has_status = true;
+    snapshot.schema_id = schema_id;
+    snapshot.status.schema_name = u8tow(schema_name);
+    snapshot.status.schema_id = u8tow(schema_id);
+    snapshot.status.ascii_mode = !!rime_status.is_ascii_mode;
+    snapshot.status.composing = !!rime_status.is_composing;
+    snapshot.status.disabled = !!rime_status.is_disabled;
+    snapshot.status.full_shape = !!rime_status.is_full_shape;
+    return snapshot;
+  }
+
+  bool has_status;
+  std::string schema_id;
+  weasel::Status status;
+};
+
 class RimeWithWeaselHandler : public weasel::RequestHandler {
  public:
   RimeWithWeaselHandler(weasel::UI* ui);
@@ -108,18 +132,25 @@ class RimeWithWeaselHandler : public weasel::RequestHandler {
  private:
   void _Setup();
   bool _IsDeployerRunning();
-  void _UpdateUI(WeaselSessionId ipc_id);
+  void _UpdateUI(WeaselSessionId ipc_id,
+                 const RimeUiStatusSnapshot* status_snapshot = nullptr);
   void _LoadSchemaSpecificSettings(WeaselSessionId ipc_id,
                                    const std::string& schema_id);
   void _LoadAppInlinePreeditSet(WeaselSessionId ipc_id,
                                 bool ignore_app_name = false);
   bool _ShowMessage(weasel::Context& ctx, weasel::Status& status);
-  bool _Respond(WeaselSessionId ipc_id, EatLine eat);
+  bool _Respond(WeaselSessionId ipc_id,
+                EatLine eat,
+                RimeUiStatusSnapshot* status_snapshot = nullptr);
   void _ReadClientInfo(WeaselSessionId ipc_id, LPWSTR buffer);
   void _GetCandidateInfo(weasel::CandidateInfo& cinfo, RimeContext& ctx);
   void _GetStatus(weasel::Status& stat,
                   WeaselSessionId ipc_id,
                   weasel::Context& ctx);
+  void _ApplyStatusSnapshot(weasel::Status& stat,
+                            WeaselSessionId ipc_id,
+                            weasel::Context& ctx,
+                            const RimeUiStatusSnapshot& snapshot);
   void _GetContext(weasel::Context& ctx, RimeSessionId session_id);
   void _UpdateShowNotifications(RimeConfig* config, bool initialize = false);
 
