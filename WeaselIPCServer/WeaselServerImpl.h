@@ -81,6 +81,7 @@ class ServerImpl : public CWindowImpl<ServerImpl, CWindow, ServerWinTraits>
   HWND Start();
   int Stop();
   int Run();
+  static bool PipeMessageNeedsOuterApiLock(PipeMessage pipe_msg);
 
   void SetRequestHandler(RequestHandler* pHandler) {
     m_pRequestHandler = pHandler;
@@ -91,6 +92,7 @@ class ServerImpl : public CWindowImpl<ServerImpl, CWindow, ServerWinTraits>
 
  private:
   void _Finailize();
+  DWORD DispatchPipeMessage(PipeMessage pipe_msg);
   template <typename _Resp>
   void HandlePipeMessage(PipeMessage pipe_msg, _Resp resp);
 

@@ -27,6 +27,7 @@ class PipeServer : public PipeChannel<DWORD, PipeMessage> {
 using namespace weasel;
 
 extern CAppModule _Module;
+static std::mutex g_api_mutex;
 
 ServerImpl::ServerImpl()
     : m_pRequestHandler(NULL),
@@ -59,7 +60,9 @@ LRESULT ServerImpl::OnColorChange(UINT uMsg,
                                   BOOL& bHandled) {
   if (IsUserDarkMode() != m_darkMode) {
     m_darkMode = IsUserDarkMode();
-    m_pRequestHandler->UpdateColorTheme(m_darkMode);
+    std::lock_guard guard(g_api_mutex);
+    if (m_pRequestHandler)
+      m_pRequestHandler->UpdateColorTheme(m_darkMode);
   }
   return 0;
 }
@@ -100,6 +103,7 @@ LRESULT ServerImpl::OnEndSystemSession(UINT uMsg,
                                        WPARAM wParam,
                                        LPARAM lParam,
                                        BOOL& bHandled) {
+  std::lock_guard guard(g_api_mutex);
   if (m_pRequestHandler) {
     m_pRequestHandler->Finalize();
     m_pRequestHandler = nullptr;
@@ -113,12 +117,18 @@ LRESULT ServerImpl::OnCommand(UINT uMsg,
                               BOOL& bHandled) {
   UINT uID = LOWORD(wParam);
   switch (uID) {
-    case ID_WEASELTRAY_ENABLE_ASCII:
-      m_pRequestHandler->SetOption(lParam, "ascii_mode", true);
+    case ID_WEASELTRAY_ENABLE_ASCII: {
+      std::lock_guard guard(g_api_mutex);
+      if (m_pRequestHandler)
+        m_pRequestHandler->SetOption(lParam, "ascii_mode", true);
       return 0;
-    case ID_WEASELTRAY_DISABLE_ASCII:
-      m_pRequestHandler->SetOption(lParam, "ascii_mode", false);
+    }
+    case ID_WEASELTRAY_DISABLE_ASCII: {
+      std::lock_guard guard(g_api_mutex);
+      if (m_pRequestHandler)
+        m_pRequestHandler->SetOption(lParam, "ascii_mode", false);
       return 0;
+    }
     default:;
   }
 
@@ -162,7 +172,16 @@ int ServerImpl::Stop() {
   return 0;
 }
 
-static std::mutex g_api_mutex;
+bool ServerImpl::PipeMessageNeedsOuterApiLock(PipeMessage pipe_msg) {
+  switch (pipe_msg.Msg) {
+    case WEASEL_IPC_SHUTDOWN_SERVER:
+    case WEASEL_IPC_UPDATE_INPUT_POS:
+    case WEASEL_IPC_TRAY_COMMAND:
+      return false;
+    default:
+      return true;
+  }
+}
 
 int ServerImpl::Run() {
   // This workaround causes a VC internal error:
@@ -172,7 +191,6 @@ int ServerImpl::Run() {
   // auto listener = boost::bind(&PipeServer::Listen, channel.get(), handler);
   //
   auto listener = [this](PipeMessage msg, PipeServer::Respond resp) -> void {
-    std::lock_guard guard(g_api_mutex);
     HandlePipeMessage(msg, resp);
   };
   pipeThread = std::make_unique<boost::thread>(
@@ -267,8 +285,6 @@ DWORD ServerImpl::OnFocusOut(WEASEL_IPC_COMMAND uMsg,
 DWORD ServerImpl::OnUpdateInputPosition(WEASEL_IPC_COMMAND uMsg,
                                         DWORD wParam,
                                         DWORD lParam) {
-  if (!m_pRequestHandler)
-    return 0;
   /*
    * 移位标志 = 1bit == 0
    * height: 0~127 = 7bit
@@ -302,6 +318,9 @@ DWORD ServerImpl::OnUpdateInputPosition(WEASEL_IPC_COMMAND uMsg,
     rc = {lt.x, lt.y, rb.x, rb.y};
   }
 
+  std::lock_guard guard(g_api_mutex);
+  if (!m_pRequestHandler)
+    return 0;
   m_pRequestHandler->UpdateInputPosition(rc, lParam);
   return 0;
 }
@@ -388,8 +407,7 @@ DWORD ServerImpl::OnChangePage(WEASEL_IPC_COMMAND uMsg,
   __result = _result;                     \
   }
 
-template <typename _Resp>
-void ServerImpl::HandlePipeMessage(PipeMessage pipe_msg, _Resp resp) {
+DWORD ServerImpl::DispatchPipeMessage(PipeMessage pipe_msg) {
   DWORD result;
 
   MAP_PIPE_MSG_HANDLE(pipe_msg.Msg, pipe_msg.wParam, pipe_msg.lParam)
@@ -414,6 +432,19 @@ void ServerImpl::HandlePipeMessage(PipeMessage pipe_msg, _Resp resp) {
   PIPE_MSG_HANDLE(WEASEL_IPC_PROCESS_KEY_EVENT_WITH_STATUS,
                   OnKeyEventWithStatus);
   END_MAP_PIPE_MSG_HANDLE(result);
+
+  return result;
+}
+
+template <typename _Resp>
+void ServerImpl::HandlePipeMessage(PipeMessage pipe_msg, _Resp resp) {
+  DWORD result;
+  if (PipeMessageNeedsOuterApiLock(pipe_msg)) {
+    std::lock_guard guard(g_api_mutex);
+    result = DispatchPipeMessage(pipe_msg);
+  } else {
+    result = DispatchPipeMessage(pipe_msg);
+  }
 
   resp(result);
 }

@@ -4,6 +4,8 @@
 #include "stdafx.h"
 #include <WeaselIPC.h>
 #include <RimeWithWeasel.h>
+#include <resource.h>
+#include "../../WeaselIPCServer/WeaselServerImpl.h"
 
 #include <boost/detail/lightweight_test.hpp>
 #include <boost/interprocess/streams/bufferstream.hpp>
@@ -120,6 +122,17 @@ int unit_main() {
   next_status.ascii_mode = true;
   BOOST_TEST(RimeUiNeedsUpdate(current_context, current_status,
                                current_context, next_status));
+
+  BOOST_TEST(weasel::ServerImpl::PipeMessageNeedsOuterApiLock(
+      {WEASEL_IPC_PROCESS_KEY_EVENT_WITH_STATUS, 0, 0}));
+  BOOST_TEST(!weasel::ServerImpl::PipeMessageNeedsOuterApiLock(
+      {WEASEL_IPC_SHUTDOWN_SERVER, 0, 0}));
+  BOOST_TEST(!weasel::ServerImpl::PipeMessageNeedsOuterApiLock(
+      {WEASEL_IPC_UPDATE_INPUT_POS, 0, 0}));
+  BOOST_TEST(!weasel::ServerImpl::PipeMessageNeedsOuterApiLock(
+      {WEASEL_IPC_TRAY_COMMAND, ID_WEASELTRAY_DEPLOY, 0}));
+  BOOST_TEST(!weasel::ServerImpl::PipeMessageNeedsOuterApiLock(
+      {WEASEL_IPC_TRAY_COMMAND, ID_WEASELTRAY_ENABLE_ASCII, 0}));
 
   return boost::report_errors();
 }
