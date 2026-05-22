@@ -52,6 +52,7 @@
 - 某些宿主可能只稳定触发 `OnTestKeyDown` / `OnTestKeyUp`，不保证后续一定按预期触发正式 `OnKeyDown` / `OnKeyUp`。
 - TestKey 回调现在可以真正处理一次 Rime 按键，并缓存结果；如果随后正式 Key 回调到来，直接复用缓存结果，不再把同一个物理按键送给 Rime 第二次。
 - TestKey cache 匹配时忽略 repeat count / previous-key-state 等 lParam 差异，适配部分宿主 TestKey 与 Key 回调参数不完全一致的情况。
+- TestKeyDown 会清理上一轮残留的 KeyUp cache，TestKeyUp 会清理同一物理键的 KeyDown cache；即使宿主没有发送正式 KeyUp，也不会让下一次 Shift 切换命中旧缓存而跳过 Rime。
 - 手动退出算法服务后，TestKey 和正式 Key 路径都透明放行，不再因为中文模式预测吃字母而导致退出后无法输入英文字母。
 - `ActiveKeyDownGuard` 改为只判断是否应 suppress，不再在判断时自动记录。
 - 正式 `OnKeyDown` 只有在 `_ProcessKeyEvent()` 成功且 `pfEaten=TRUE` 后才记录 active key，避免 disabled、unknown、pass-through key 的第二次回调被误吞。
@@ -116,6 +117,7 @@
 - 按键 IPC 结果编码和 `ShouldEatKeyEvent(TRUE, TRUE)`。
 - `ShouldEatKeyEvent` 覆盖 composing 被当前键结束时仍应吃键。
 - TestKey 预测、单次处理 cache、lParam 容错匹配和 cache reset。
+- TestKey cache 按物理键清理上下沿残留，覆盖没有正式 Key 回调消费缓存时的下一轮 Shift。
 - 本地 composition abort 后 `_status.composing` 清理。
 - 重复 keydown guard 的显式 `Remember()` / suppress 行为。
 - 输入位置缓存 reset。
@@ -131,6 +133,7 @@
 
 - 服务端 busy、pipe 瞬时不可用、后台恢复进行中时，TSF 当前按键线程不再被同步重连、阻塞 outer lock 或恢复锁拖住。
 - TestKey 和正式 Key 回调不会重复推进 Rime 状态，减少重复回调导致的双击、吞键和组合状态错乱。
+- 宿主只发 TestKey、不发正式 KeyUp 时，下一次 Shift 仍会进入 Rime 处理，不会被上一轮缓存吞掉。
 - Backspace/Delete/Enter 等编辑键在组合状态下更容易拿到及时的 composing 状态；部分宿主里“输入第一个编码字符后 Backspace 删除不掉”的场景应被修复。
 - 手动退出算法服务后，选中小狼毫时普通字母应交回宿主输入，不再被 TSF 预测路径吞掉。
 - 部署完成/失败、退出服务、重启服务、重启成功/失败都有托盘提示。

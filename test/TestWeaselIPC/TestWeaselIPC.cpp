@@ -323,6 +323,13 @@ int unit_main() {
   key_cache.Clear();
   BOOST_TEST(!key_cache.Matches(true, 'A', 0x9e0001));
 
+  key_cache.Store(false, VK_SHIFT, 0x002a0001, FALSE);
+  key_cache.Remove(false, VK_SHIFT, 0x802a0001);
+  BOOST_TEST(!key_cache.Matches(false, VK_SHIFT, 0x002a0001));
+  key_cache.Store(true, VK_SHIFT, 0x802a0001, TRUE);
+  key_cache.Remove(true, VK_SHIFT, 0x002a0001);
+  BOOST_TEST(!key_cache.Matches(true, VK_SHIFT, 0x802a0001));
+
   key_cache.Store(false, 'A', 0x1e0001, FALSE);
   key_cache.Store(false, 'B', 0x300001, TRUE);
   BOOST_TEST(key_cache.Matches(false, 'A', 0x1e0001));

@@ -130,6 +130,18 @@ struct KeyEventTestCache {
     matched_entry = -1;
   }
 
+  void Remove(bool is_key_up, WPARAM wParam, LPARAM lParam) {
+    UINT32 key_identity = PhysicalKeyIdentity(lParam);
+    for (size_t i = 0; i < ENTRY_COUNT; ++i) {
+      if (entries[i].valid && entries[i].key_up == is_key_up &&
+          entries[i].w_param == wParam &&
+          PhysicalKeyIdentity(entries[i].l_param) == key_identity) {
+        entries[i].valid = false;
+      }
+    }
+    matched_entry = -1;
+  }
+
   static UINT32 ComparableLParam(LPARAM lParam) {
     // Repeat count and previous-key-state may differ between TestKey and Key
     // callbacks for the same physical key in some hosts.

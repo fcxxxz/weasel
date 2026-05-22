@@ -217,6 +217,7 @@ STDAPI WeaselTSF::OnTestKeyDown(ITfContext* pContext,
                                 BOOL* pfEaten) {
   _ResetKeyEventTestCacheIfNeeded();
   _fTestKeyUpPending = FALSE;
+  _keyEventTestCache.Remove(true, wParam, lParam);
   if (_keyEventTestCache.Matches(false, wParam, lParam)) {
     *pfEaten = _keyEventTestCache.Eaten();
     TRACE_KEY_EVENT(L"OnTestKeyDown", wParam, lParam,
@@ -275,6 +276,7 @@ STDAPI WeaselTSF::OnTestKeyUp(ITfContext* pContext,
                               BOOL* pfEaten) {
   _ResetKeyEventTestCacheIfNeeded();
   _fTestKeyDownPending = FALSE;
+  _keyEventTestCache.Remove(false, wParam, lParam);
   if (_keyEventTestCache.Matches(true, wParam, lParam)) {
     *pfEaten = _keyEventTestCache.Eaten();
     TRACE_KEY_EVENT(L"OnTestKeyUp", wParam, lParam,
