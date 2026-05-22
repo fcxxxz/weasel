@@ -161,7 +161,7 @@ uninst:
   CopyFiles $R1\data\*.* $TEMP\weasel-backup
 
 call_uninstaller:
-  ExecWait '"$R1\WeaselServer.exe" /quit'
+  ExecWait '"$R1\WeaselServer.exe" /stop'
   ExecWait '"$R1\WeaselSetup.exe" /u'
   ; Remove registry keys
   DeleteRegKey HKLM SOFTWARE\Rime
@@ -212,7 +212,7 @@ Section "Weasel"
   StrCpy $INSTDIR "${WEASEL_ROOT}"
 
   IfFileExists "$INSTDIR\WeaselServer.exe" 0 +2
-  ExecWait '"$INSTDIR\WeaselServer.exe" /quit'
+  ExecWait '"$INSTDIR\WeaselServer.exe" /stop'
 
   SetOverwrite try
   ; Set output path to the installation directory.
@@ -305,7 +305,10 @@ program_files:
   IfErrors +2 0
   StrCpy $R2 "/t"
 
-  ExecWait '"$INSTDIR\WeaselSetup.exe" $R2'
+  ExecWait '"$INSTDIR\WeaselSetup.exe" $R2' $R3
+  ${If} $R3 != 0
+    Abort
+  ${Endif}
 
   ; Write the uninstall keys for Windows
   WriteRegStr HKLM "${REG_UNINST_KEY}" "DisplayName" "$(DISPLAYNAME)"
@@ -321,11 +324,11 @@ program_files:
 
   ; run as user...
   IfSilent deploy_silently
-  ExecWait "$INSTDIR\WeaselDeployer.exe /install"
+  ExecWait '"$INSTDIR\WeaselDeployer.exe" /install'
   GoTo deploy_done
 
   deploy_silently:
-  ExecWait "$INSTDIR\WeaselDeployer.exe /deploy"
+  ExecWait '"$INSTDIR\WeaselDeployer.exe" /deploy'
   deploy_done:
 
   ; don't redirect on 64 bit system for auto run setting
@@ -335,9 +338,9 @@ program_files:
     SetRegView 64
   ${Endif}
   ; Write autorun key
-  WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Run" "WeaselServer" "$INSTDIR\WeaselServer.exe"
+  WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Run" "WeaselServer" '"$INSTDIR\WeaselServer.exe" /startup'
   ; Start WeaselServer
-  Exec "$INSTDIR\WeaselServer.exe"
+  Exec '"$INSTDIR\WeaselServer.exe" /startup'
 
   ; option CheckForUpdates
   IfSilent DisableAutoCheckUpdate
@@ -364,7 +367,7 @@ Section "Start Menu Shortcuts"
   CreateShortCut "$SMPROGRAMS\$(DISPLAYNAME)\$(LNKFORDICT).lnk" "$INSTDIR\WeaselDeployer.exe" "/dict" "$SYSDIR\shell32.dll" 6
   CreateShortCut "$SMPROGRAMS\$(DISPLAYNAME)\$(LNKFORSYNC).lnk" "$INSTDIR\WeaselDeployer.exe" "/sync" "$SYSDIR\shell32.dll" 26
   CreateShortCut "$SMPROGRAMS\$(DISPLAYNAME)\$(LNKFORDEPLOY).lnk" "$INSTDIR\WeaselDeployer.exe" "/deploy" "$SYSDIR\shell32.dll" 144
-  CreateShortCut "$SMPROGRAMS\$(DISPLAYNAME)\$(LNKFORSERVER).lnk" "$INSTDIR\WeaselServer.exe" "" "$INSTDIR\WeaselServer.exe" 0
+  CreateShortCut "$SMPROGRAMS\$(DISPLAYNAME)\$(LNKFORSERVER).lnk" "$INSTDIR\WeaselServer.exe" "/startup" "$INSTDIR\WeaselServer.exe" 0
   CreateShortCut "$SMPROGRAMS\$(DISPLAYNAME)\$(LNKFORUSERFOLDER).lnk" "$INSTDIR\WeaselServer.exe" "/userdir" "$SYSDIR\shell32.dll" 126
   CreateShortCut "$SMPROGRAMS\$(DISPLAYNAME)\$(LNKFORAPPFOLDER).lnk" "$INSTDIR\WeaselServer.exe" "/weaseldir" "$SYSDIR\shell32.dll" 19
   CreateShortCut "$SMPROGRAMS\$(DISPLAYNAME)\$(LNKFORUPDATER).lnk" "$INSTDIR\WeaselServer.exe" "/update" "$SYSDIR\shell32.dll" 13
@@ -379,7 +382,7 @@ SectionEnd
 
 Section "Uninstall"
 
-  ExecWait '"$INSTDIR\WeaselServer.exe" /quit'
+  ExecWait '"$INSTDIR\WeaselServer.exe" /stop'
 
   ExecWait '"$INSTDIR\WeaselSetup.exe" /u'
 

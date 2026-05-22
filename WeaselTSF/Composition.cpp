@@ -405,6 +405,8 @@ STDAPI WeaselTSF::OnCompositionTerminated(TfEditCookie ecWrite,
 
 void WeaselTSF::_AbortComposition(bool clear) {
   m_client.ClearComposition();
+  weasel::MarkLocalCompositionAborted(_status);
+  _keyEventTestCache.Clear();
   if (_IsComposing()) {
     _EndComposition(_pEditSessionContext, clear);
   }

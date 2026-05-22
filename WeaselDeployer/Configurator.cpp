@@ -133,26 +133,30 @@ int Configurator::UpdateWorkspace(bool report_errors) {
   }
 
   weasel::Client client;
-  if (client.Connect()) {
+  if (client.TryConnect()) {
     LOG(INFO) << "Turning WeaselServer into maintenance mode.";
     client.StartMaintenance();
   }
 
+  bool deployed = false;
   {
     RimeApi* rime = rime_get_api();
     // initialize default config, preset schemas
-    rime->deploy();
+    deployed = !!rime->deploy();
     // initialize weasel config
-    rime->deploy_config_file("weasel.yaml", "config_version");
+    deployed =
+        !!rime->deploy_config_file("weasel.yaml", "config_version") && deployed;
   }
 
   CloseHandle(hMutex);  // should be closed before resuming service.
 
-  if (client.Connect()) {
+  if (client.TryConnect()) {
     LOG(INFO) << "Resuming service.";
-    client.EndMaintenance();
+    client.EndMaintenance(
+        deployed ? weasel::WEASEL_IPC_MAINTENANCE_DEPLOY_SUCCESS
+                 : weasel::WEASEL_IPC_MAINTENANCE_DEPLOY_FAILURE);
   }
-  return 0;
+  return deployed ? 0 : 1;
 }
 
 int Configurator::DictManagement() {
@@ -172,7 +176,7 @@ int Configurator::DictManagement() {
   }
 
   weasel::Client client;
-  if (client.Connect()) {
+  if (client.TryConnect()) {
     LOG(INFO) << "Turning WeaselServer into maintenance mode.";
     client.StartMaintenance();
   }
@@ -188,7 +192,7 @@ int Configurator::DictManagement() {
 
   CloseHandle(hMutex);  // should be closed before resuming service.
 
-  if (client.Connect()) {
+  if (client.TryConnect()) {
     LOG(INFO) << "Resuming service.";
     client.EndMaintenance();
   }
@@ -212,16 +216,28 @@ int Configurator::SyncUserData() {
   }
 
   weasel::Client client;
-  if (client.Connect()) {
+  bool maintenance_started = false;
+  if (client.TryConnect()) {
     LOG(INFO) << "Turning WeaselServer into maintenance mode.";
     client.StartMaintenance();
+    maintenance_started = true;
   }
+  auto resume_service = [&]() {
+    if (!maintenance_started)
+      return;
+    if (client.TryConnect()) {
+      LOG(INFO) << "Resuming service.";
+      client.EndMaintenance();
+    }
+    maintenance_started = false;
+  };
 
   {
     RimeApi* rime = rime_get_api();
     if (!rime->sync_user_data()) {
       LOG(ERROR) << "Error synching user data.";
       CloseHandle(hMutex);
+      resume_service();
       return 1;
     }
     rime->join_maintenance_thread();
@@ -229,9 +245,6 @@ int Configurator::SyncUserData() {
 
   CloseHandle(hMutex);  // should be closed before resuming service.
 
-  if (client.Connect()) {
-    LOG(INFO) << "Resuming service.";
-    client.EndMaintenance();
-  }
+  resume_service();
   return 0;
 }

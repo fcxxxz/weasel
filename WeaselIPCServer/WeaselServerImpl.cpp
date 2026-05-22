@@ -29,6 +29,11 @@ using namespace weasel;
 extern CAppModule _Module;
 static std::mutex g_api_mutex;
 
+static bool PipeMessageUsesTryOuterApiLock(PipeMessage pipe_msg) {
+  return pipe_msg.Msg == WEASEL_IPC_PROCESS_KEY_EVENT ||
+         pipe_msg.Msg == WEASEL_IPC_PROCESS_KEY_EVENT_WITH_STATUS;
+}
+
 ServerImpl::ServerImpl()
     : m_pRequestHandler(NULL),
       m_darkMode(IsUserDarkMode()),
@@ -111,6 +116,16 @@ LRESULT ServerImpl::OnEndSystemSession(UINT uMsg,
   return 0;
 }
 
+LRESULT ServerImpl::OnServiceNotifyMessage(UINT uMsg,
+                                           WPARAM wParam,
+                                           LPARAM lParam,
+                                           BOOL& bHandled) {
+  std::lock_guard guard(g_api_mutex);
+  if (m_pRequestHandler)
+    m_pRequestHandler->NotifyService(static_cast<DWORD>(wParam));
+  return 0;
+}
+
 LRESULT ServerImpl::OnCommand(UINT uMsg,
                               WPARAM wParam,
                               LPARAM lParam,
@@ -150,22 +165,35 @@ DWORD ServerImpl::OnCommand(WEASEL_IPC_COMMAND uMsg,
 }
 
 HWND ServerImpl::Start() {
-  std::wstring instanceName = L"(WEASEL)Furandōru-Sukāretto-";
-  instanceName += getUsername();
+  std::wstring instanceName = ServiceInstanceMutexName();
   HANDLE hMutexOneInstance = ::CreateMutex(NULL, FALSE, instanceName.c_str());
-  bool areYouOK = (::GetLastError() == ERROR_ALREADY_EXISTS ||
-                   ::GetLastError() == ERROR_ACCESS_DENIED);
+  DWORD mutex_error = ::GetLastError();
+  bool areYouOK =
+      (mutex_error == ERROR_ALREADY_EXISTS || mutex_error == ERROR_ACCESS_DENIED);
+  WeaselDebugLog(L"WeaselIPCServer",
+                 L"Start mutex=" + instanceName + L" handle=" +
+                     std::to_wstring(reinterpret_cast<uintptr_t>(
+                         hMutexOneInstance)) +
+                     L" error=" + std::to_wstring(mutex_error) +
+                     L" already_running=" + std::to_wstring(areYouOK));
 
   if (areYouOK) {
+    WeaselDebugLog(L"WeaselIPCServer",
+                   L"Start failed: single instance guard");
     return 0;  // assure single instance
   }
 
   HWND hwnd = Create(NULL);
+  WeaselDebugLog(L"WeaselIPCServer",
+                 L"Create hidden window hwnd=" +
+                     std::to_wstring(reinterpret_cast<uintptr_t>(hwnd)) +
+                     L" last_error=" + std::to_wstring(GetLastError()));
 
   return hwnd;
 }
 
 int ServerImpl::Stop() {
+  WeaselDebugLog(L"WeaselIPCServer", L"Stop requested");
   // DO NOT exit process or finalize here
   // Let WeaselServer handle this
   PostMessage(WM_QUIT);
@@ -174,13 +202,22 @@ int ServerImpl::Stop() {
 
 bool ServerImpl::PipeMessageNeedsOuterApiLock(PipeMessage pipe_msg) {
   switch (pipe_msg.Msg) {
+    case WEASEL_IPC_PROCESS_KEY_EVENT:
+    case WEASEL_IPC_PROCESS_KEY_EVENT_WITH_STATUS:
     case WEASEL_IPC_SHUTDOWN_SERVER:
+    case WEASEL_IPC_NOTIFY_SERVICE:
     case WEASEL_IPC_UPDATE_INPUT_POS:
     case WEASEL_IPC_TRAY_COMMAND:
       return false;
     default:
       return true;
   }
+}
+
+void ServerImpl::PostServiceNotification(DWORD notification) {
+  if (!notification)
+    return;
+  PostMessage(WM_WEASEL_SERVICE_NOTIFY, static_cast<WPARAM>(notification), 0);
 }
 
 int ServerImpl::Run() {
@@ -195,6 +232,7 @@ int ServerImpl::Run() {
   };
   pipeThread = std::make_unique<boost::thread>(
       [this, &listener]() { channel->Listen(listener); });
+  WeaselDebugLog(L"WeaselIPCServer", L"pipe listener thread started");
 
   CMessageLoop theLoop;
   _Module.AddMessageLoop(&theLoop);
@@ -233,7 +271,7 @@ DWORD ServerImpl::OnEndSession(WEASEL_IPC_COMMAND uMsg,
 DWORD ServerImpl::OnKeyEvent(WEASEL_IPC_COMMAND uMsg,
                              DWORD wParam,
                              DWORD lParam) {
-  if (!m_pRequestHandler /* || !m_pSharedMemory*/)
+  if (!m_pRequestHandler || !m_pRequestHandler->FindSession(lParam))
     return 0;
 
   auto eat = [this](std::wstring& msg) -> bool {
@@ -258,9 +296,35 @@ DWORD ServerImpl::OnKeyEventWithStatus(WEASEL_IPC_COMMAND uMsg,
 }
 
 DWORD ServerImpl::OnShutdownServer(WEASEL_IPC_COMMAND uMsg,
-                                   DWORD wParam,
-                                   DWORD lParam) {
-  Stop();
+                                    DWORD wParam,
+                                    DWORD lParam) {
+  DWORD reason = WEASEL_IPC_SHUTDOWN_REASON_EXIT;
+  if (wParam == WEASEL_IPC_SHUTDOWN_REASON_RESTART)
+    reason = WEASEL_IPC_SHUTDOWN_REASON_RESTART;
+  else if (wParam == WEASEL_IPC_SHUTDOWN_REASON_STOP)
+    reason = WEASEL_IPC_SHUTDOWN_REASON_STOP;
+  if (reason == WEASEL_IPC_SHUTDOWN_REASON_EXIT)
+    MarkServiceManualExit();
+  else if (reason == WEASEL_IPC_SHUTDOWN_REASON_RESTART)
+    ClearServiceManualExit();
+  if (reason == WEASEL_IPC_SHUTDOWN_REASON_EXIT)
+    UnregisterApplicationRestart();
+
+  DWORD notification = WEASEL_IPC_SERVICE_NOTIFICATION_EXITING;
+  if (reason == WEASEL_IPC_SHUTDOWN_REASON_RESTART)
+    notification = WEASEL_IPC_SERVICE_NOTIFICATION_RESTARTING;
+  PostServiceNotification(notification);
+  boost::thread([this] {
+    Sleep(1200);
+    Stop();
+  }).detach();
+  return 0;
+}
+
+DWORD ServerImpl::OnServiceNotification(WEASEL_IPC_COMMAND uMsg,
+                                        DWORD wParam,
+                                        DWORD lParam) {
+  PostServiceNotification(wParam);
   return 0;
 }
 
@@ -337,7 +401,7 @@ DWORD ServerImpl::OnEndMaintenance(WEASEL_IPC_COMMAND uMsg,
                                    DWORD wParam,
                                    DWORD lParam) {
   if (m_pRequestHandler)
-    m_pRequestHandler->EndMaintenance();
+    m_pRequestHandler->EndMaintenance(wParam);
   return 0;
 }
 
@@ -416,6 +480,7 @@ DWORD ServerImpl::DispatchPipeMessage(PipeMessage pipe_msg) {
   PIPE_MSG_HANDLE(WEASEL_IPC_END_SESSION, OnEndSession)
   PIPE_MSG_HANDLE(WEASEL_IPC_PROCESS_KEY_EVENT, OnKeyEvent)
   PIPE_MSG_HANDLE(WEASEL_IPC_SHUTDOWN_SERVER, OnShutdownServer)
+  PIPE_MSG_HANDLE(WEASEL_IPC_NOTIFY_SERVICE, OnServiceNotification)
   PIPE_MSG_HANDLE(WEASEL_IPC_FOCUS_IN, OnFocusIn)
   PIPE_MSG_HANDLE(WEASEL_IPC_FOCUS_OUT, OnFocusOut)
   PIPE_MSG_HANDLE(WEASEL_IPC_UPDATE_INPUT_POS, OnUpdateInputPosition)
@@ -439,7 +504,14 @@ DWORD ServerImpl::DispatchPipeMessage(PipeMessage pipe_msg) {
 template <typename _Resp>
 void ServerImpl::HandlePipeMessage(PipeMessage pipe_msg, _Resp resp) {
   DWORD result;
-  if (PipeMessageNeedsOuterApiLock(pipe_msg)) {
+  if (PipeMessageUsesTryOuterApiLock(pipe_msg)) {
+    std::unique_lock<std::mutex> guard(g_api_mutex, std::try_to_lock);
+    if (!guard.owns_lock()) {
+      result = 0;
+    } else {
+      result = DispatchPipeMessage(pipe_msg);
+    }
+  } else if (PipeMessageNeedsOuterApiLock(pipe_msg)) {
     std::lock_guard guard(g_api_mutex);
     result = DispatchPipeMessage(pipe_msg);
   } else {
@@ -457,10 +529,17 @@ void PipeServer::Listen(ServerHandler const& handler) {
     HANDLE pipe = INVALID_HANDLE_VALUE;
     try {
       boost::this_thread::interruption_point();
+      WeaselDebugLog(L"WeaselIPCServer", L"waiting for pipe connection");
       pipe = _ConnectServerPipe(pname);
+      WeaselDebugLog(L"WeaselIPCServer",
+                     L"pipe connected handle=" +
+                         std::to_wstring(reinterpret_cast<uintptr_t>(pipe)));
       boost::thread th(
           [&handler, pipe, this] { _ProcessPipeThread(pipe, handler); });
+      th.detach();
     } catch (DWORD ex) {
+      WeaselDebugLog(L"WeaselIPCServer",
+                     L"pipe listen exception=" + std::to_wstring(ex));
       _FinalizePipe(pipe);
     }
     boost::this_thread::interruption_point();

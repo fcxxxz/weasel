@@ -4,6 +4,7 @@
 #include "stdafx.h"
 
 #include "resource.h"
+#include "WeaselIPC.h"
 #include "WeaselUtility.h"
 #include <thread>
 
@@ -82,6 +83,7 @@ static int CustomInstall(bool installing) {
     RegCloseKey(hKey);
   }
   bool _has_installed = has_installed();
+  bool install_tsf = installing || !_has_installed;
   if (!silent) {
     InstallOptionsDialog dlg;
     dlg.installed = _has_installed;
@@ -94,9 +96,15 @@ static int CustomInstall(bool installing) {
       hant = dlg.hant;
       user_dir = dlg.user_dir;
       _has_installed = dlg.installed;
+      install_tsf = installing || !_has_installed;
     }
   }
-  if (!_has_installed)
+  WeaselDebugLog(L"WeaselSetup",
+                 L"CustomInstall installing=" + std::to_wstring(installing) +
+                     L" has_installed=" + std::to_wstring(_has_installed) +
+                     L" silent=" + std::to_wstring(silent) +
+                     L" install_tsf=" + std::to_wstring(install_tsf));
+  if (install_tsf)
     if (0 != install(hant, silent))
       return 1;
 
@@ -123,10 +131,11 @@ static int CustomInstall(bool installing) {
   if (_has_installed) {
     std::wstring dir(install_dir());
     std::thread th([dir]() {
-      ShellExecuteW(NULL, NULL, (dir + L"\\WeaselServer.exe").c_str(), L"/q",
-                    NULL, SW_SHOWNORMAL);
+      ShellExecuteW(NULL, NULL, (dir + L"\\WeaselServer.exe").c_str(),
+                    weasel::ServiceStopArgument(), NULL, SW_SHOWNORMAL);
       Sleep(500);
-      ShellExecuteW(NULL, NULL, (dir + L"\\WeaselServer.exe").c_str(), L"",
+      ShellExecuteW(NULL, NULL, (dir + L"\\WeaselServer.exe").c_str(),
+                    weasel::ServiceManualRestartArgument(),
                     NULL, SW_SHOWNORMAL);
       Sleep(500);
       ShellExecuteW(NULL, NULL, (dir + L"\\WeaselDeployer.exe").c_str(),

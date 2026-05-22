@@ -91,3 +91,23 @@ void WeaselTrayIcon::Refresh() {
     ShowIcon();
   }
 }
+
+void WeaselTrayIcon::ShowMaintenanceResult(DWORD result) {
+  ShowServiceNotification(result);
+}
+
+void WeaselTrayIcon::ShowServiceNotification(DWORD notification) {
+  UINT string_id = ServiceNotificationStringId(notification);
+  if (!string_id)
+    return;
+
+  CString info;
+  if (!info.LoadStringW(string_id))
+    return;
+
+  if (!Visible())
+    ShowIcon();
+
+  ShowBalloon(info, get_weasel_ime_name().c_str(),
+              ServiceNotificationBalloonIcon(notification));
+}

@@ -1,4 +1,5 @@
 #pragma once
+#include <atomic>
 
 struct KeyInfo {
   UINT repeatCount : 16;
@@ -26,36 +27,227 @@ struct KeyEvent {
   }
 };
 
+inline bool IsTextVirtualKey(WPARAM wParam) {
+  return (wParam >= L'0' && wParam <= L'9') ||
+         (wParam >= L'A' && wParam <= L'Z') ||
+         (wParam >= VK_NUMPAD0 && wParam <= VK_DIVIDE) ||
+         (wParam >= VK_OEM_1 && wParam <= VK_OEM_102) ||
+         wParam == VK_PACKET || wParam == VK_SPACE;
+}
+
+inline bool IsModeSwitchVirtualKey(WPARAM wParam) {
+  return wParam == VK_SHIFT || wParam == VK_LSHIFT ||
+         wParam == VK_RSHIFT || wParam == VK_CONTROL ||
+         wParam == VK_LCONTROL || wParam == VK_RCONTROL ||
+         wParam == VK_CAPITAL;
+}
+
+inline bool ShouldEatTestKeyEvent(bool service_available,
+                                  bool ascii_mode,
+                                  bool capslock_simulation,
+                                  bool composing,
+                                  bool shortcut_modifier,
+                                  bool known_key,
+                                  WPARAM wParam) {
+  if (!service_available)
+    return false;
+  if (!known_key)
+    return false;
+  if (capslock_simulation)
+    return true;
+  if (IsModeSwitchVirtualKey(wParam))
+    return true;
+  if (shortcut_modifier && !composing)
+    return false;
+  if (composing)
+    return true;
+  return !ascii_mode && IsTextVirtualKey(wParam);
+}
+
+inline bool ShouldEatTestKeyEvent(bool ascii_mode,
+                                  bool capslock_simulation,
+                                  bool composing,
+                                  bool shortcut_modifier,
+                                  bool known_key,
+                                  WPARAM wParam) {
+  return ShouldEatTestKeyEvent(true, ascii_mode, capslock_simulation, composing,
+                               shortcut_modifier, known_key, wParam);
+}
+
 struct KeyEventTestCache {
   KeyEventTestCache()
-      : valid(false), key_up(false), w_param(0), l_param(0), eaten(FALSE) {}
+      : entries(), next_entry(0), matched_entry(-1) {}
 
   bool Matches(bool is_key_up, WPARAM wParam, LPARAM lParam) const {
-    return valid && key_up == is_key_up && w_param == wParam &&
-           l_param == lParam;
+    matched_entry = -1;
+    UINT32 key_identity = ComparableLParam(lParam);
+    for (size_t i = 0; i < ENTRY_COUNT; ++i) {
+      if (entries[i].valid && entries[i].key_up == is_key_up &&
+          entries[i].w_param == wParam &&
+          ComparableLParam(entries[i].l_param) == key_identity) {
+        matched_entry = static_cast<int>(i);
+        return true;
+      }
+    }
+    return false;
   }
 
   void Store(bool is_key_up, WPARAM wParam, LPARAM lParam, BOOL is_eaten) {
-    valid = true;
-    key_up = is_key_up;
-    w_param = wParam;
-    l_param = lParam;
-    eaten = is_eaten ? TRUE : FALSE;
+    size_t entry = next_entry;
+    for (size_t i = 0; i < ENTRY_COUNT; ++i) {
+      if (!entries[i].valid ||
+          (entries[i].key_up == is_key_up && entries[i].w_param == wParam &&
+           entries[i].l_param == lParam)) {
+        entry = i;
+        break;
+      }
+    }
+    entries[entry].valid = true;
+    entries[entry].key_up = is_key_up;
+    entries[entry].w_param = wParam;
+    entries[entry].l_param = lParam;
+    entries[entry].eaten = is_eaten ? TRUE : FALSE;
+    matched_entry = static_cast<int>(entry);
+    next_entry = (entry + 1) % ENTRY_COUNT;
   }
 
-  BOOL Eaten() const { return eaten; }
+  BOOL Eaten() const {
+    if (matched_entry < 0)
+      return FALSE;
+    return entries[matched_entry].eaten;
+  }
 
   void Clear() {
-    valid = false;
-    eaten = FALSE;
+    for (size_t i = 0; i < ENTRY_COUNT; ++i)
+      entries[i] = Entry();
+    next_entry = 0;
+    matched_entry = -1;
   }
 
-  bool valid;
-  bool key_up;
-  WPARAM w_param;
-  LPARAM l_param;
-  BOOL eaten;
+  void RemoveMatched() {
+    if (matched_entry >= 0)
+      entries[matched_entry].valid = false;
+    matched_entry = -1;
+  }
+
+  static UINT32 ComparableLParam(LPARAM lParam) {
+    // Repeat count and previous-key-state may differ between TestKey and Key
+    // callbacks for the same physical key in some hosts.
+    return static_cast<UINT32>(lParam) & 0xA1FF0000;
+  }
+
+  static UINT32 PhysicalKeyIdentity(LPARAM lParam) {
+    return ComparableLParam(lParam) & ~0x80000000u;
+  }
+
+  struct Entry {
+    Entry()
+        : valid(false), key_up(false), w_param(0), l_param(0), eaten(FALSE) {}
+
+    bool valid;
+    bool key_up;
+    WPARAM w_param;
+    LPARAM l_param;
+    BOOL eaten;
+  };
+
+  enum { ENTRY_COUNT = 4 };
+  Entry entries[ENTRY_COUNT];
+  size_t next_entry;
+  mutable int matched_entry;
 };
+
+struct ActiveKeyDownGuard {
+  ActiveKeyDownGuard() : entries(), next_entry(0) {}
+
+  bool ShouldSuppress(WPARAM wParam, LPARAM lParam) {
+    KeyInfo info(lParam);
+    if (info.isKeyUp || info.prevKeyState)
+      return false;
+
+    UINT32 identity = KeyEventTestCache::PhysicalKeyIdentity(lParam);
+    for (size_t i = 0; i < ENTRY_COUNT; ++i) {
+      if (entries[i].valid && entries[i].w_param == wParam &&
+          entries[i].key_identity == identity) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  void Remember(WPARAM wParam, LPARAM lParam) {
+    KeyInfo info(lParam);
+    if (info.isKeyUp || info.prevKeyState)
+      return;
+
+    UINT32 identity = KeyEventTestCache::PhysicalKeyIdentity(lParam);
+    for (size_t i = 0; i < ENTRY_COUNT; ++i) {
+      if (entries[i].valid && entries[i].w_param == wParam &&
+          entries[i].key_identity == identity) {
+        return;
+      }
+    }
+
+    size_t entry = next_entry;
+    for (size_t i = 0; i < ENTRY_COUNT; ++i) {
+      if (!entries[i].valid) {
+        entry = i;
+        break;
+      }
+    }
+    entries[entry].valid = true;
+    entries[entry].w_param = wParam;
+    entries[entry].key_identity = identity;
+    next_entry = (entry + 1) % ENTRY_COUNT;
+  }
+
+  void Release(WPARAM wParam, LPARAM lParam) {
+    UINT32 identity = KeyEventTestCache::PhysicalKeyIdentity(lParam);
+    for (size_t i = 0; i < ENTRY_COUNT; ++i) {
+      if (entries[i].valid && entries[i].w_param == wParam &&
+          entries[i].key_identity == identity) {
+        entries[i].valid = false;
+      }
+    }
+  }
+
+  void Reset() {
+    for (size_t i = 0; i < ENTRY_COUNT; ++i)
+      entries[i] = Entry();
+    next_entry = 0;
+  }
+
+  struct Entry {
+    Entry() : valid(false), w_param(0), key_identity(0) {}
+
+    bool valid;
+    WPARAM w_param;
+    UINT32 key_identity;
+  };
+
+  enum { ENTRY_COUNT = 8 };
+  Entry entries[ENTRY_COUNT];
+  size_t next_entry;
+};
+
+struct KeyEventTestCacheReset {
+  KeyEventTestCacheReset() : pending(false) {}
+
+  void Mark() { pending.store(true); }
+
+  bool Pending() const { return pending.load(); }
+
+  bool Apply(KeyEventTestCache& cache) {
+    if (!pending.exchange(false))
+      return false;
+    cache.Clear();
+    return true;
+  }
+
+  std::atomic_bool pending;
+};
+
 }  // namespace weasel
 
 bool ConvertKeyEvent(UINT vkey,

@@ -1,15 +1,15 @@
 ﻿#include "stdafx.h"
 #include "WeaselClientImpl.h"
 #include <StringAlgorithm.hpp>
+#include <utility>
 
 using namespace weasel;
 
-ClientImpl::ClientImpl()
+ClientImpl::ClientImpl(std::wstring pipe_name)
     : session_id(0),
-      channel(GetPipeName()),
+      channel(std::move(pipe_name)),
       is_ime(false),
-      has_input_position(false),
-      last_input_position(0) {
+      input_position_cache() {
   _InitializeClientInfo();
 }
 
@@ -46,31 +46,87 @@ void ClientImpl::_InitializeClientInfo() {
 }
 
 bool ClientImpl::Connect(ServerLauncher const& launcher) {
+  std::lock_guard<std::recursive_mutex> lock(client_mutex);
+  if (channel.Connected())
+    return true;
+  if (channel.TryConnect())
+    return true;
+  if (launcher)
+    launcher();
   return channel.Connect();
 }
 
+bool ClientImpl::TryConnect() {
+  std::unique_lock<std::recursive_mutex> lock(client_mutex, std::try_to_lock);
+  if (!lock.owns_lock())
+    return false;
+  if (channel.Connected())
+    return true;
+  return channel.TryConnect();
+}
+
+bool ClientImpl::Reconnect(ServerLauncher const& launcher, bool wait_for_pipe) {
+  std::unique_lock<std::recursive_mutex> lock(client_mutex, std::try_to_lock);
+  if (!lock.owns_lock())
+    return false;
+
+  if (_Active()) {
+    DWORD ignored = 0;
+    _TrySendMessage(WEASEL_IPC_END_SESSION, 0, session_id, &ignored);
+  }
+  session_id = 0;
+  input_position_cache.Reset();
+  channel.Disconnect();
+
+  if (wait_for_pipe) {
+    if (!channel.TryConnect() && launcher)
+      launcher();
+    if (!channel.Connect())
+      return false;
+  } else if (!channel.TryConnect()) {
+    return false;
+  }
+
+  return _StartSessionLocked(wait_for_pipe);
+}
+
 void ClientImpl::Disconnect() {
+  std::lock_guard<std::recursive_mutex> lock(client_mutex);
   if (_Active())
     EndSession();
   channel.Disconnect();
+  input_position_cache.Reset();
 }
 
-void ClientImpl::ShutdownServer() {
-  _SendMessage(WEASEL_IPC_SHUTDOWN_SERVER, 0, 0);
+void ClientImpl::ShutdownServer(DWORD reason) {
+  std::lock_guard<std::recursive_mutex> lock(client_mutex);
+  _SendMessage(WEASEL_IPC_SHUTDOWN_SERVER, reason, 0);
+}
+
+void ClientImpl::NotifyService(DWORD notification) {
+  std::lock_guard<std::recursive_mutex> lock(client_mutex);
+  _SendMessage(WEASEL_IPC_NOTIFY_SERVICE, notification, 0);
 }
 
 bool ClientImpl::ProcessKeyEvent(KeyEvent const& keyEvent) {
+  std::unique_lock<std::recursive_mutex> lock(client_mutex, std::try_to_lock);
+  if (!lock.owns_lock())
+    return false;
   if (!_Active())
     return false;
 
-  LRESULT ret =
-      _SendMessage(WEASEL_IPC_PROCESS_KEY_EVENT, keyEvent, session_id);
-  return ret != 0;
+  DWORD result = 0;
+  return _TrySendMessage(WEASEL_IPC_PROCESS_KEY_EVENT, keyEvent, session_id,
+                         &result) &&
+         result != 0;
 }
 
 bool ClientImpl::ProcessKeyEvent(KeyEvent const& keyEvent, bool* eaten) {
   if (eaten)
     *eaten = false;
+  std::unique_lock<std::recursive_mutex> lock(client_mutex, std::try_to_lock);
+  if (!lock.owns_lock())
+    return false;
   if (session_id == 0)
     return false;
 
@@ -86,45 +142,71 @@ bool ClientImpl::ProcessKeyEvent(KeyEvent const& keyEvent, bool* eaten) {
 }
 
 bool ClientImpl::CommitComposition() {
+  std::unique_lock<std::recursive_mutex> lock(client_mutex, std::try_to_lock);
+  if (!lock.owns_lock())
+    return false;
   if (!_Active())
     return false;
 
-  LRESULT ret = _SendMessage(WEASEL_IPC_COMMIT_COMPOSITION, 0, session_id);
-  return ret != 0;
+  DWORD result = 0;
+  return _TrySendMessage(WEASEL_IPC_COMMIT_COMPOSITION, 0, session_id,
+                         &result) &&
+         result != 0;
 }
 
 bool ClientImpl::ClearComposition() {
+  std::unique_lock<std::recursive_mutex> lock(client_mutex, std::try_to_lock);
+  if (!lock.owns_lock())
+    return false;
   if (!_Active())
     return false;
 
-  LRESULT ret = _SendMessage(WEASEL_IPC_CLEAR_COMPOSITION, 0, session_id);
-  return ret != 0;
+  DWORD result = 0;
+  return _TrySendMessage(WEASEL_IPC_CLEAR_COMPOSITION, 0, session_id,
+                         &result) &&
+         result != 0;
 }
 
 bool ClientImpl::SelectCandidateOnCurrentPage(size_t index) {
+  std::unique_lock<std::recursive_mutex> lock(client_mutex, std::try_to_lock);
+  if (!lock.owns_lock())
+    return false;
   if (!_Active())
     return false;
-  LRESULT ret = _SendMessage(WEASEL_IPC_SELECT_CANDIDATE_ON_CURRENT_PAGE, index,
-                             session_id);
-  return ret != 0;
+  DWORD result = 0;
+  return _TrySendMessage(WEASEL_IPC_SELECT_CANDIDATE_ON_CURRENT_PAGE,
+                         static_cast<DWORD>(index), session_id, &result) &&
+         result != 0;
 }
 
 bool ClientImpl::HighlightCandidateOnCurrentPage(size_t index) {
+  std::unique_lock<std::recursive_mutex> lock(client_mutex, std::try_to_lock);
+  if (!lock.owns_lock())
+    return false;
   if (!_Active())
     return false;
-  LRESULT ret = _SendMessage(WEASEL_IPC_HIGHLIGHT_CANDIDATE_ON_CURRENT_PAGE,
-                             index, session_id);
-  return ret != 0;
+  DWORD result = 0;
+  return _TrySendMessage(WEASEL_IPC_HIGHLIGHT_CANDIDATE_ON_CURRENT_PAGE,
+                         static_cast<DWORD>(index), session_id, &result) &&
+         result != 0;
 }
 
 bool ClientImpl::ChangePage(bool backward) {
+  std::unique_lock<std::recursive_mutex> lock(client_mutex, std::try_to_lock);
+  if (!lock.owns_lock())
+    return false;
   if (!_Active())
     return false;
-  LRESULT ret = _SendMessage(WEASEL_IPC_CHANGE_PAGE, backward, session_id);
-  return ret != 0;
+  DWORD result = 0;
+  return _TrySendMessage(WEASEL_IPC_CHANGE_PAGE, backward, session_id,
+                         &result) &&
+         result != 0;
 }
 
 void ClientImpl::UpdateInputPosition(RECT const& rc) {
+  std::unique_lock<std::recursive_mutex> lock(client_mutex, std::try_to_lock);
+  if (!lock.owns_lock())
+    return;
   if (!_Active())
     return;
   /*
@@ -147,59 +229,120 @@ void ClientImpl::UpdateInputPosition(RECT const& rc) {
   int height = max(0, min(127, (rc.bottom - rc.top) >> hi_res));
   DWORD compressed_rect = ((hi_res & 0x01) << 31) | ((height & 0x7f) << 24) |
                           ((top & 0xfff) << 12) | (left & 0xfff);
-  if (has_input_position && last_input_position == compressed_rect)
+  if (!input_position_cache.ShouldSend(compressed_rect))
     return;
 
   DWORD result = 0;
   if (_TrySendMessage(WEASEL_IPC_UPDATE_INPUT_POS, compressed_rect, session_id,
                       &result)) {
-    has_input_position = true;
-    last_input_position = compressed_rect;
+    input_position_cache.MarkSent(compressed_rect);
   }
 }
 
 void ClientImpl::FocusIn() {
+  std::unique_lock<std::recursive_mutex> lock(client_mutex, std::try_to_lock);
+  if (!lock.owns_lock())
+    return;
   DWORD client_caps = 0; /* TODO */
-  _SendMessage(WEASEL_IPC_FOCUS_IN, client_caps, session_id);
+  DWORD result = 0;
+  _TrySendMessage(WEASEL_IPC_FOCUS_IN, client_caps, session_id, &result);
 }
 
 void ClientImpl::FocusOut() {
-  _SendMessage(WEASEL_IPC_FOCUS_OUT, 0, session_id);
+  std::unique_lock<std::recursive_mutex> lock(client_mutex, std::try_to_lock);
+  if (!lock.owns_lock())
+    return;
+  DWORD result = 0;
+  _TrySendMessage(WEASEL_IPC_FOCUS_OUT, 0, session_id, &result);
 }
 
 void ClientImpl::TrayCommand(UINT menuId) {
-  _SendMessage(WEASEL_IPC_TRAY_COMMAND, menuId, session_id);
+  std::unique_lock<std::recursive_mutex> lock(client_mutex, std::try_to_lock);
+  if (!lock.owns_lock()) {
+    WeaselDebugLog(L"WeaselClient",
+                   L"TrayCommand skipped: busy menuId=" +
+                       std::to_wstring(menuId));
+    return;
+  }
+  DWORD result = 0;
+  bool ok =
+      _TrySendMessage(WEASEL_IPC_TRAY_COMMAND, menuId, session_id, &result);
+  WeaselDebugLog(L"WeaselClient",
+                 L"TrayCommand menuId=" + std::to_wstring(menuId) +
+                     L" session_id=" + std::to_wstring(session_id) +
+                     L" connected=" + std::to_wstring(channel.Connected()) +
+                     L" ok=" + std::to_wstring(ok) + L" result=" +
+                      std::to_wstring(result));
+}
+
+bool ClientImpl::TrayCommandSync(UINT menuId) {
+  std::lock_guard<std::recursive_mutex> lock(client_mutex);
+  DWORD result = 0;
+  bool ok =
+      _TrySendMessage(WEASEL_IPC_TRAY_COMMAND, menuId, session_id, &result);
+  if (!ok) {
+    channel.Disconnect();
+    if (channel.TryConnect())
+      ok = _TrySendMessage(WEASEL_IPC_TRAY_COMMAND, menuId, session_id,
+                           &result);
+  }
+  WeaselDebugLog(L"WeaselClient",
+                 L"TrayCommandSync menuId=" + std::to_wstring(menuId) +
+                     L" session_id=" + std::to_wstring(session_id) +
+                     L" connected=" + std::to_wstring(channel.Connected()) +
+                     L" ok=" + std::to_wstring(ok) + L" result=" +
+                     std::to_wstring(result));
+  return ok;
 }
 
 void ClientImpl::StartSession() {
+  std::unique_lock<std::recursive_mutex> lock(client_mutex, std::try_to_lock);
+  if (!lock.owns_lock())
+    return;
   if (_Active() && Echo())
     return;
 
-  _WriteClientInfo();
-  UINT ret = _SendMessage(WEASEL_IPC_START_SESSION, 0, 0);
-  session_id = ret;
+  _StartSessionLocked(false);
 }
 
 void ClientImpl::EndSession() {
-  _SendMessage(WEASEL_IPC_END_SESSION, 0, session_id);
+  std::unique_lock<std::recursive_mutex> lock(client_mutex, std::try_to_lock);
+  if (!lock.owns_lock())
+    return;
+  DWORD result = 0;
+  _TrySendMessage(WEASEL_IPC_END_SESSION, 0, session_id, &result);
   session_id = 0;
+  input_position_cache.Reset();
 }
 
 void ClientImpl::StartMaintenance() {
+  std::unique_lock<std::recursive_mutex> lock(client_mutex, std::try_to_lock);
+  if (!lock.owns_lock())
+    return;
   _SendMessage(WEASEL_IPC_START_MAINTENANCE, 0, 0);
   session_id = 0;
+  input_position_cache.Reset();
 }
 
-void ClientImpl::EndMaintenance() {
-  _SendMessage(WEASEL_IPC_END_MAINTENANCE, 0, 0);
+void ClientImpl::EndMaintenance(DWORD result) {
+  std::unique_lock<std::recursive_mutex> lock(client_mutex, std::try_to_lock);
+  if (!lock.owns_lock())
+    return;
+  _SendMessage(WEASEL_IPC_END_MAINTENANCE, result, 0);
   session_id = 0;
+  input_position_cache.Reset();
 }
 
 bool ClientImpl::Echo() {
+  std::unique_lock<std::recursive_mutex> lock(client_mutex, std::try_to_lock);
+  if (!lock.owns_lock())
+    return false;
   if (!_Active())
     return false;
 
-  UINT serverEcho = _SendMessage(WEASEL_IPC_ECHO, 0, session_id);
+  DWORD serverEcho = 0;
+  if (!_TrySendMessage(WEASEL_IPC_ECHO, 0, session_id, &serverEcho))
+    return false;
   return (serverEcho == session_id);
 }
 
@@ -208,7 +351,23 @@ bool ClientImpl::GetResponseData(ResponseHandler const& handler) {
     return false;
   }
 
+  // The response buffer is thread-local in PipeChannel. Parsing it must not be
+  // blocked by a background recovery thread that uses another thread's pipe.
   return channel.HandleResponseData(handler);
+}
+
+bool ClientImpl::_StartSessionLocked(bool wait_for_pipe) {
+  input_position_cache.Reset();
+  _WriteClientInfo();
+  DWORD ret = 0;
+  if (wait_for_pipe) {
+    ret = static_cast<DWORD>(_SendMessage(WEASEL_IPC_START_SESSION, 0, 0));
+  } else if (!_TrySendMessage(WEASEL_IPC_START_SESSION, 0, 0, &ret)) {
+    session_id = 0;
+    return false;
+  }
+  session_id = ret;
+  return session_id != 0;
 }
 
 bool ClientImpl::_WriteClientInfo() {
@@ -251,12 +410,24 @@ bool Client::Connect(ServerLauncher launcher) {
   return m_pImpl->Connect(launcher);
 }
 
+bool Client::TryConnect() {
+  return m_pImpl->TryConnect();
+}
+
+bool Client::Reconnect(ServerLauncher launcher, bool wait_for_pipe) {
+  return m_pImpl->Reconnect(launcher, wait_for_pipe);
+}
+
 void Client::Disconnect() {
   m_pImpl->Disconnect();
 }
 
-void Client::ShutdownServer() {
-  m_pImpl->ShutdownServer();
+void Client::ShutdownServer(DWORD reason) {
+  m_pImpl->ShutdownServer(reason);
+}
+
+void Client::NotifyService(DWORD notification) {
+  m_pImpl->NotifyService(notification);
 }
 
 bool Client::ProcessKeyEvent(KeyEvent const& keyEvent) {
@@ -311,12 +482,16 @@ void Client::StartMaintenance() {
   m_pImpl->StartMaintenance();
 }
 
-void Client::EndMaintenance() {
-  m_pImpl->EndMaintenance();
+void Client::EndMaintenance(DWORD result) {
+  m_pImpl->EndMaintenance(result);
 }
 
 void Client::TrayCommand(UINT menuId) {
   m_pImpl->TrayCommand(menuId);
+}
+
+bool Client::TrayCommandSync(UINT menuId) {
+  return m_pImpl->TrayCommandSync(menuId);
 }
 
 bool Client::Echo() {

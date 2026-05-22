@@ -1,2 +1,2 @@
 cd "%~dp0"
-weaselserver.exe /q
+weaselserver.exe /stop

@@ -42,13 +42,15 @@ bool PipeChannelBase::_EnsureOnce() {
   try {
     HANDLE* phandle = _GetPipeHandle();
     if (_Invalid(*phandle)) {
-      *phandle = _TryConnect();
-      if (_Invalid(*phandle))
+      HANDLE pipe = _TryConnect();
+      if (_Invalid(pipe))
         return false;
       DWORD mode = PIPE_READMODE_MESSAGE;
-      if (!SetNamedPipeHandleState(*phandle, &mode, NULL, NULL)) {
-        _ThrowLastError;
+      if (!SetNamedPipeHandleState(pipe, &mode, NULL, NULL)) {
+        _FinalizePipe(pipe);
+        return false;
       }
+      *phandle = pipe;
     }
   } catch (...) {
     return false;
@@ -63,6 +65,7 @@ HANDLE PipeChannelBase::_Connect(const wchar_t* name) {
     ::WaitNamedPipe(name, 500);
   DWORD mode = PIPE_READMODE_MESSAGE;
   if (!SetNamedPipeHandleState(pipe, &mode, NULL, NULL)) {
+    _FinalizePipe(pipe);
     _ThrowLastError;
   }
   return pipe;

@@ -33,13 +33,10 @@ if errorlevel 1 goto xp_install
 
 :win7_install
 WeaselSetup.exe %install_option%
-rem regsvr32.exe /s "%CD%\weasel.dll"
 goto next
 
 :win7_x64_install
 WeaselSetupx64.exe %install_option%
-rem regsvr32.exe /s "%CD%\weasel.dll"
-rem regsvr32.exe /s "%CD%\weaselx64.dll"
 goto next
 
 :xp_install
@@ -47,10 +44,10 @@ WeaselSetup.exe %install_option%
 goto next
 
 :next
-reg add "HKEY_LOCAL_MACHINE\Software\Microsoft\Windows\CurrentVersion\Run" /v WeaselServer /t REG_SZ /d "%CD%\WeaselServer.exe" /f
+reg add "HKEY_LOCAL_MACHINE\Software\Microsoft\Windows\CurrentVersion\Run" /v WeaselServer /t REG_SZ /d "\"%CD%\WeaselServer.exe\" /startup" /f
 
 :done
-start WeaselServer.exe
+start "" WeaselServer.exe /startup
 
 if /i "%2" == "/register" pause
 echo installed.

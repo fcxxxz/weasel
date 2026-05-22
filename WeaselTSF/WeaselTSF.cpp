@@ -10,6 +10,14 @@
 #include "Compartment.h"
 #include "ResponseParser.h"
 
+static std::wstring ModuleFileName(HMODULE module) {
+  WCHAR path[MAX_PATH] = {0};
+  DWORD length = GetModuleFileNameW(module, path, _countof(path));
+  if (length == 0)
+    return L"";
+  return path;
+}
+
 static void error_message(const WCHAR* msg) {
   static DWORD next_tick = 0;
   DWORD now = GetTickCount();
@@ -35,9 +43,13 @@ WeaselTSF::WeaselTSF() {
   _cand = new CCandidateList(this);
 
   DllAddRef();
+  WeaselDebugLog(L"WeaselTSF", L"constructed module=" +
+                                   ModuleFileName(g_hInst) + L" host=" +
+                                   ModuleFileName(NULL));
 }
 
 WeaselTSF::~WeaselTSF() {
+  WeaselDebugLog(L"WeaselTSF", L"destroyed");
   DllRelease();
 }
 
@@ -77,25 +89,28 @@ STDAPI WeaselTSF::QueryInterface(REFIID riid, void** ppvObject) {
 }
 
 STDAPI_(ULONG) WeaselTSF::AddRef() {
-  return ++_cRef;
+  return InterlockedIncrement(&_cRef);
 }
 
 STDAPI_(ULONG) WeaselTSF::Release() {
-  LONG cr = --_cRef;
+  LONG cr = InterlockedDecrement(&_cRef);
 
-  assert(_cRef >= 0);
+  assert(cr >= 0);
 
-  if (_cRef == 0)
+  if (cr == 0)
     delete this;
 
   return cr;
 }
 
 STDAPI WeaselTSF::Activate(ITfThreadMgr* pThreadMgr, TfClientId tfClientId) {
+  WeaselDebugLog(L"WeaselTSF",
+                 L"Activate client_id=" + std::to_wstring(tfClientId));
   return ActivateEx(pThreadMgr, tfClientId, 0U);
 }
 
 STDAPI WeaselTSF::Deactivate() {
+  WeaselDebugLog(L"WeaselTSF", L"Deactivate start");
   m_client.EndSession();
 
   _InitTextEditSink(com_ptr<ITfDocumentMgr>());
@@ -117,6 +132,7 @@ STDAPI WeaselTSF::Deactivate() {
 
   _cand->DestroyAll();
 
+  WeaselDebugLog(L"WeaselTSF", L"Deactivate done");
   return S_OK;
 }
 
@@ -126,19 +142,30 @@ STDAPI WeaselTSF::ActivateEx(ITfThreadMgr* pThreadMgr,
   com_ptr<ITfDocumentMgr> pDocMgrFocus;
   _activateFlags = dwFlags;
 
+  WeaselDebugLog(L"WeaselTSF",
+                 L"ActivateEx start client_id=" + std::to_wstring(tfClientId) +
+                     L" flags=" + std::to_wstring(dwFlags) + L" module=" +
+                     ModuleFileName(g_hInst) + L" host=" +
+                     ModuleFileName(NULL));
+
   _pThreadMgr = pThreadMgr;
   _tfClientId = tfClientId;
 
-  if (!_InitThreadMgrEventSink())
+  if (!_InitThreadMgrEventSink()) {
+    WeaselDebugLog(L"WeaselTSF",
+                   L"ActivateEx failed: _InitThreadMgrEventSink");
     goto ExitError;
+  }
 
   if ((_pThreadMgr->GetFocus(&pDocMgrFocus) == S_OK) &&
       (pDocMgrFocus != NULL)) {
     _InitTextEditSink(pDocMgrFocus);
   }
 
-  if (!_InitKeyEventSink())
+  if (!_InitKeyEventSink()) {
+    WeaselDebugLog(L"WeaselTSF", L"ActivateEx failed: _InitKeyEventSink");
     goto ExitError;
+  }
 
   // if (!_InitDisplayAttributeGuidAtom())
   //	goto ExitError;
@@ -146,25 +173,35 @@ STDAPI WeaselTSF::ActivateEx(ITfThreadMgr* pThreadMgr,
   // like some opengl stuff
   _InitDisplayAttributeGuidAtom();
 
-  if (!_InitPreservedKey())
+  if (!_InitPreservedKey()) {
+    WeaselDebugLog(L"WeaselTSF", L"ActivateEx failed: _InitPreservedKey");
     goto ExitError;
+  }
 
-  if (!_InitLanguageBar())
+  if (!_InitLanguageBar()) {
+    WeaselDebugLog(L"WeaselTSF", L"ActivateEx failed: _InitLanguageBar");
     goto ExitError;
+  }
 
   if (!_IsKeyboardOpen())
     _SetKeyboardOpen(TRUE);
 
-  if (!_InitCompartment())
+  if (!_InitCompartment()) {
+    WeaselDebugLog(L"WeaselTSF", L"ActivateEx failed: _InitCompartment");
     goto ExitError;
-  if (!_InitThreadFocusSink())
+  }
+  if (!_InitThreadFocusSink()) {
+    WeaselDebugLog(L"WeaselTSF", L"ActivateEx failed: _InitThreadFocusSink");
     goto ExitError;
+  }
 
   _EnsureServerConnected();
 
+  WeaselDebugLog(L"WeaselTSF", L"ActivateEx succeeded");
   return S_OK;
 
 ExitError:
+  WeaselDebugLog(L"WeaselTSF", L"ActivateEx returning E_FAIL");
   Deactivate();
   return E_FAIL;
 }
@@ -213,6 +250,9 @@ STDMETHODIMP WeaselTSF::OnActivated(REFCLSID clsid,
     return S_OK;
   }
 
+  WeaselDebugLog(L"WeaselTSF",
+                 L"OnActivated isActivated=" +
+                     std::to_wstring(isActivated));
   if (isActivated) {
     _ShowLanguageBar(TRUE);
     _UpdateLanguageBar(_status);
@@ -223,18 +263,27 @@ STDMETHODIMP WeaselTSF::OnActivated(REFCLSID clsid,
   return S_OK;
 }
 
-void WeaselTSF::_Reconnect() {
-  m_client.Disconnect();
-  m_client.Connect(NULL);
-  m_client.StartSession();
+bool WeaselTSF::_Reconnect(bool update_tsf_status, bool wait_for_pipe) {
+  if (!m_client.Reconnect(NULL, wait_for_pipe))
+    return false;
+  _keyEventTestCacheReset.Mark();
+  if (!update_tsf_status)
+    return true;
   weasel::ResponseParser parser(NULL, NULL, &_status, NULL, &_cand->style());
   bool ok = m_client.GetResponseData(std::ref(parser));
   if (ok) {
     _UpdateLanguageBar(_status);
   }
+  return true;
 }
 
 void WeaselTSF::_RecoverServerAsync() {
+  if (!weasel::ShouldAutoRecoverService()) {
+    WeaselDebugLog(L"WeaselTSF",
+                   L"skip async recovery: manual exit marked");
+    return;
+  }
+
   if (InterlockedCompareExchange(&_recoveringServer, 1, 0) != 0)
     return;
 
@@ -242,7 +291,7 @@ void WeaselTSF::_RecoverServerAsync() {
   try {
     std::thread th([this]() {
       try {
-        _EnsureServerConnected();
+        _EnsureServerConnected(false);
       } catch (...) {
       }
       InterlockedExchange(&_recoveringServer, 0);
@@ -255,14 +304,17 @@ void WeaselTSF::_RecoverServerAsync() {
   }
 }
 
-static unsigned int retry = 0;
+bool WeaselTSF::_EnsureServerConnected(bool update_tsf_status) {
+  if (!weasel::ShouldAutoRecoverService()) {
+    WeaselDebugLog(L"WeaselTSF", L"skip recovery: manual exit marked");
+    return false;
+  }
 
-bool WeaselTSF::_EnsureServerConnected() {
   if (!m_client.Echo()) {
-    _Reconnect();
-    retry++;
-    if (retry >= 6) {
+    _Reconnect(update_tsf_status, false);
+    if (++_serverRecoveryRetry >= 6) {
       HANDLE hMutex = CreateMutex(NULL, TRUE, L"WeaselDeployerExclusiveMutex");
+      DWORD mutex_error = GetLastError();
       const auto count_server_process = []() -> int {
         int count = 0;
         HANDLE snap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
@@ -279,25 +331,66 @@ bool WeaselTSF::_EnsureServerConnected() {
         CloseHandle(snap);
         return count;
       };
-      if (!m_client.Echo() && GetLastError() != ERROR_ALREADY_EXISTS &&
+      if (!m_client.Echo() && mutex_error != ERROR_ALREADY_EXISTS &&
           !count_server_process()) {
+        if (!weasel::ShouldAutoRecoverService()) {
+          WeaselDebugLog(L"WeaselTSF",
+                         L"skip launch during recovery: manual exit marked");
+          if (hMutex) {
+            CloseHandle(hMutex);
+          }
+          _serverRecoveryRetry.store(0);
+          return false;
+        }
         std::wstring dir = _GetRootDir();
-        std::thread th([dir, this]() {
-          ShellExecuteW(NULL, L"open", (dir + L"\\start_service.bat").c_str(),
-                        NULL, dir.c_str(), SW_HIDE);
-          // wait 500ms, then reconnect
-          std::this_thread::sleep_for(std::chrono::milliseconds(500));
-          _Reconnect();
-        });
-        th.detach();
+        auto restart_server = [dir, this]() {
+          if (!weasel::ShouldAutoRecoverService()) {
+            WeaselDebugLog(
+                L"WeaselTSF",
+                L"skip recovery thread launch: manual exit marked");
+            return;
+          }
+          if (dir.empty())
+            return;
+          std::wstring server = weasel::ServiceExecutablePath(dir);
+          ShellExecuteW(NULL, L"open", server.c_str(),
+                        weasel::ServiceRecoveryArgument(), dir.c_str(),
+                        SW_HIDE);
+          for (int i = 0; i < 20; ++i) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            if (_Reconnect(false, false) && m_client.Echo()) {
+              m_client.NotifyService(
+                  weasel::WEASEL_IPC_SERVICE_NOTIFICATION_RESTART_SUCCESS);
+              break;
+            }
+          }
+        };
+        if (update_tsf_status) {
+          AddRef();
+          try {
+            std::thread th([restart_server, this]() {
+              try {
+                restart_server();
+              } catch (...) {
+              }
+              Release();
+            });
+            th.detach();
+          } catch (...) {
+            Release();
+          }
+        } else {
+          restart_server();
+        }
       }
       if (hMutex) {
         CloseHandle(hMutex);
       }
-      retry = 0;
+      _serverRecoveryRetry.store(0);
     }
     return (m_client.Echo() != 0);
   } else {
+    _serverRecoveryRetry.store(0);
     return true;
   }
 }

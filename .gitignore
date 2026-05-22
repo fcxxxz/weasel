@@ -4,6 +4,12 @@
 build
 msbuild
 compile_commands.json
+/x64/
+/Win32/
+/ARM64/
+/test/*/x64/
+/test/*/Win32/
+/test/*/ARM64/
 /output/Win32/*.exe
 /output/Win32/rime.dll
 /output/Win32/*.pdb
@@ -27,6 +33,11 @@ compile_commands.json
 /output/data/essay.txt
 /output/data/opencc/
 /output/data/*.yaml
+/output/data/lua/
+/output/data/rime.lua
+/output/data/weasel-custom-data.txt
+/output/data/weasel-visible-schemas.txt
+/output/data/01 */
 /output/archives
 /include/glog
 /include/rime*.h

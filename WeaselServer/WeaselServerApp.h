@@ -56,7 +56,8 @@ class WeaselServerApp {
   }
 
  public:
-  WeaselServerApp();
+  explicit WeaselServerApp(
+      DWORD startup_notification = weasel::WEASEL_IPC_SERVICE_NOTIFICATION_NONE);
   ~WeaselServerApp();
   int Run();
 
@@ -67,4 +68,5 @@ class WeaselServerApp {
   weasel::UI m_ui;
   WeaselTrayIcon tray_icon;
   std::unique_ptr<RimeWithWeaselHandler> m_handler;
+  DWORD m_startup_notification;
 };

@@ -1,21 +1,46 @@
 #pragma once
 #include <WeaselIPC.h>
 #include <PipeChannel.h>
+#include <mutex>
 
 namespace weasel {
 
+struct InputPositionCache {
+  InputPositionCache() : has_position(false), last_position(0) {}
+
+  bool ShouldSend(DWORD position) const {
+    return !has_position || last_position != position;
+  }
+
+  void MarkSent(DWORD position) {
+    has_position = true;
+    last_position = position;
+  }
+
+  void Reset() {
+    has_position = false;
+    last_position = 0;
+  }
+
+  bool has_position;
+  DWORD last_position;
+};
+
 class ClientImpl {
  public:
-  ClientImpl();
+  explicit ClientImpl(std::wstring pipe_name = GetPipeName());
   ~ClientImpl();
 
   bool Connect(ServerLauncher const& launcher);
+  bool TryConnect();
+  bool Reconnect(ServerLauncher const& launcher, bool wait_for_pipe);
   void Disconnect();
-  void ShutdownServer();
+  void ShutdownServer(DWORD reason);
+  void NotifyService(DWORD notification);
   void StartSession();
   void EndSession();
   void StartMaintenance();
-  void EndMaintenance();
+  void EndMaintenance(DWORD result = WEASEL_IPC_MAINTENANCE_RESULT_NONE);
   bool Echo();
   bool ProcessKeyEvent(KeyEvent const& keyEvent);
   bool ProcessKeyEvent(KeyEvent const& keyEvent, bool* eaten);
@@ -28,6 +53,7 @@ class ClientImpl {
   void FocusIn();
   void FocusOut();
   void TrayCommand(UINT menuId);
+  bool TrayCommandSync(UINT menuId);
   bool GetResponseData(ResponseHandler const& handler);
 
  protected:
@@ -39,6 +65,7 @@ class ClientImpl {
                        DWORD wParam,
                        DWORD lParam,
                        DWORD* result);
+  bool _StartSessionLocked(bool wait_for_pipe);
 
   bool _Connected() const { return channel.Connected(); }
   bool _Active() const { return channel.Connected() && session_id != 0; }
@@ -47,8 +74,8 @@ class ClientImpl {
   UINT session_id;
   std::wstring app_name;
   bool is_ime;
-  bool has_input_position;
-  DWORD last_input_position;
+  InputPositionCache input_position_cache;
+  std::recursive_mutex client_mutex;
 
   PipeChannel<PipeMessage> channel;
 };

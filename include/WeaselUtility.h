@@ -45,6 +45,54 @@ inline fs::path WeaselLogPath() {
   return path;
 }
 
+inline bool ShouldTraceKeyEvents() {
+  static bool enabled = []() {
+    WCHAR value[8] = {0};
+    DWORD length =
+        GetEnvironmentVariableW(L"WEASEL_TRACE_KEY_EVENTS", value,
+                                static_cast<DWORD>(_countof(value)));
+    return length > 0 && value[0] != L'0';
+  }();
+  return enabled;
+}
+
+inline void WeaselDebugLog(const std::wstring& component,
+                           const std::wstring& message) {
+  try {
+    SYSTEMTIME st;
+    GetLocalTime(&st);
+    WCHAR prefix[256] = {0};
+    swprintf_s(prefix, _countof(prefix),
+               L"%04d-%02d-%02d %02d:%02d:%02d.%03d pid=%lu tid=%lu [%s] ",
+               st.wYear, st.wMonth, st.wDay, st.wHour, st.wMinute, st.wSecond,
+               st.wMilliseconds, GetCurrentProcessId(), GetCurrentThreadId(),
+               component.c_str());
+    std::wstring line = std::wstring(prefix) + message + L"\r\n";
+    int bytes = WideCharToMultiByte(CP_UTF8, 0, line.c_str(),
+                                    static_cast<int>(line.size()), NULL, 0,
+                                    NULL, NULL);
+    if (bytes <= 0)
+      return;
+    std::string utf8(bytes, '\0');
+    WideCharToMultiByte(CP_UTF8, 0, line.c_str(),
+                        static_cast<int>(line.size()), utf8.data(), bytes,
+                        NULL, NULL);
+
+    fs::path log_file = WeaselLogPath() / L"weasel-debug.log";
+    HANDLE file =
+        CreateFileW(log_file.c_str(), FILE_APPEND_DATA,
+                    FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+                    NULL, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+    if (file == INVALID_HANDLE_VALUE)
+      return;
+    DWORD written = 0;
+    WriteFile(file, utf8.data(), static_cast<DWORD>(utf8.size()), &written,
+              NULL);
+    CloseHandle(file);
+  } catch (...) {
+  }
+}
+
 inline BOOL IsUserDarkMode() {
   constexpr const LPCWSTR key =
       L"Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize";

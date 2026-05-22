@@ -97,11 +97,18 @@ struct RimeUiStatusSnapshot {
   weasel::Status status;
 };
 
-inline bool RimeUiNeedsUpdate(weasel::Context current_context,
-                              weasel::Status current_status,
-                              weasel::Context next_context,
-                              weasel::Status next_status) {
+inline bool RimeUiNeedsUpdate(const weasel::Context& current_context,
+                              const weasel::Status& current_status,
+                              const weasel::Context& next_context,
+                              const weasel::Status& next_status) {
   return current_context != next_context || !(current_status == next_status);
+}
+
+inline bool ShouldSuppressInlineOptionNotification(
+    const std::string& message_type,
+    const std::string& message_value) {
+  return message_type == "option" &&
+         (message_value == "ascii_mode" || message_value == "!ascii_mode");
 }
 
 class RimeWithWeaselHandler : public weasel::RequestHandler {
@@ -128,13 +135,17 @@ class RimeWithWeaselHandler : public weasel::RequestHandler {
   virtual void FocusOut(DWORD param, WeaselSessionId ipc_id);
   virtual void UpdateInputPosition(RECT const& rc, WeaselSessionId ipc_id);
   virtual void StartMaintenance();
-  virtual void EndMaintenance();
+  virtual void EndMaintenance(
+      DWORD result = weasel::WEASEL_IPC_MAINTENANCE_RESULT_NONE);
+  virtual void NotifyService(DWORD notification);
   virtual void SetOption(WeaselSessionId ipc_id,
                          const std::string& opt,
                          bool val);
   virtual void UpdateColorTheme(BOOL darkMode);
 
   void OnUpdateUI(std::function<void()> const& cb);
+  void OnMaintenanceResult(std::function<void(DWORD)> const& cb);
+  void OnServiceNotification(std::function<void(DWORD)> const& cb);
 
  private:
   void _Setup();
@@ -148,7 +159,8 @@ class RimeWithWeaselHandler : public weasel::RequestHandler {
   bool _ShowMessage(weasel::Context& ctx, weasel::Status& status);
   bool _Respond(WeaselSessionId ipc_id,
                 EatLine eat,
-                RimeUiStatusSnapshot* status_snapshot = nullptr);
+                RimeUiStatusSnapshot* status_snapshot = nullptr,
+                bool* has_commit = nullptr);
   void _ReadClientInfo(WeaselSessionId ipc_id, LPWSTR buffer);
   void _GetCandidateInfo(weasel::CandidateInfo& cinfo, RimeContext& ctx);
   void _GetStatus(weasel::Status& stat,
@@ -164,6 +176,7 @@ class RimeWithWeaselHandler : public weasel::RequestHandler {
   void _UpdateInlinePreeditStatus(WeaselSessionId ipc_id);
   void _RefreshTrayIconIfNeeded(RimeSessionId session_id);
   void _InvalidateTrayIconSignature();
+  void _SetDeployMessage(DWORD result);
 
   RimeSessionId to_session_id(WeaselSessionId ipc_id) {
     return m_session_status_map[ipc_id].session_id;
@@ -185,6 +198,7 @@ class RimeWithWeaselHandler : public weasel::RequestHandler {
   std::map<std::string, bool> m_show_notifications;
   std::map<std::string, bool> m_show_notifications_base;
   std::function<void()> _UpdateUICallback;
+  std::function<void(DWORD)> _ServiceNotificationCallback;
 
   static void OnNotify(void* context_object,
                        uintptr_t session_id,

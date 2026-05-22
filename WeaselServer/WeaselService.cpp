@@ -66,7 +66,7 @@ void WeaselService::Start(DWORD dwArgc = 0, PWSTR* pszArgv = NULL) {
 
     // Perform service-specific initialization.
     // if (IsWindowsVistaOrGreater())
-    { RegisterApplicationRestart(NULL, 0); }
+    { RegisterApplicationRestart(weasel::ServiceRecoveryArgument(), 0); }
     boost::thread{[this] { app.Run(); }};
     // Tell SCM that the service is started.
     SetServiceStatus(SERVICE_RUNNING);
@@ -86,11 +86,11 @@ void WeaselService::Stop() {
     // Tell SCM that the service is stopping.
     SetServiceStatus(SERVICE_STOP_PENDING);
 
-    // Perform service-specific stop operations.
+    // SCM stop is not a user tray quit; do not mark manual-exit here.
     weasel::Client client;
-    if (client.Connect())  // try to connect to running server
+    if (client.TryConnect())  // try to connect to running server
     {
-      client.ShutdownServer();
+      client.ShutdownServer(weasel::WEASEL_IPC_SHUTDOWN_REASON_STOP);
     }
 
     // Tell SCM that the service is stopped.

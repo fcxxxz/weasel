@@ -3,6 +3,7 @@
 #include "Globals.h"
 #include <WeaselIPC.h>
 #include <WeaselIPCData.h>
+#include <atomic>
 
 class CCandidateList;
 class CLangBarItemButton;
@@ -128,7 +129,7 @@ class WeaselTSF : public ITfTextInputProcessorEx,
   void _HandleLangBarMenuSelect(UINT wID);
 
   /* IPC */
-  bool _EnsureServerConnected();
+  bool _EnsureServerConnected(bool update_tsf_status = true);
 
   /* UI */
   void _UpdateUI(const weasel::Context& ctx, const weasel::Status& status);
@@ -169,7 +170,10 @@ class WeaselTSF : public ITfTextInputProcessorEx,
 
   BOOL _InitKeyEventSink();
   void _UninitKeyEventSink();
+  bool _TestKeyEvent(WPARAM wParam, LPARAM lParam, BOOL* pfEaten);
   bool _ProcessKeyEvent(WPARAM wParam, LPARAM lParam, BOOL* pfEaten);
+  bool _CanHandleKeyEvent();
+  void _ResetKeyEventTestCacheIfNeeded();
 
   BOOL _InitPreservedKey();
   void _UninitPreservedKey();
@@ -188,7 +192,7 @@ class WeaselTSF : public ITfTextInputProcessorEx,
   void _UninitCompartment();
   HRESULT _HandleCompartment(REFGUID guidCompartment);
 
-  void _Reconnect();
+  bool _Reconnect(bool update_tsf_status = true, bool wait_for_pipe = false);
   void _RecoverServerAsync();
   std::wstring _GetRootDir();
 
@@ -205,6 +209,10 @@ class WeaselTSF : public ITfTextInputProcessorEx,
   BYTE _lpbKeyState[256];
   BOOL _fTestKeyDownPending, _fTestKeyUpPending;
   weasel::KeyEventTestCache _keyEventTestCache;
+  weasel::KeyEventTestCacheReset _keyEventTestCacheReset;
+  weasel::ActiveKeyDownGuard _activeKeyDownGuard;
+  DWORD _manualExitCheckTick = 0;
+  bool _manualExitMarkedForKeyEvents = false;
 
   com_ptr<ITfContext> _pEditSessionContext;
   std::wstring _editSessionText;
@@ -235,5 +243,6 @@ class WeaselTSF : public ITfTextInputProcessorEx,
   BOOL _async_edit = false;
   BOOL _committed = false;
   BOOL _isToOpenClose = false;
+  std::atomic_uint _serverRecoveryRetry{0};
   volatile LONG _recoveringServer = 0;
 };

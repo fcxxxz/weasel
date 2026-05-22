@@ -38,18 +38,51 @@ typedef HRESULT(WINAPI* PTF_INSTALLLAYOUTORTIP)(LPCWSTR psz, DWORD dwFlags);
   L"Reporting\\LocalDumps\\WeaselServer.exe"
 
 BOOL copy_file(const std::wstring& src, const std::wstring& dest) {
-  BOOL ret = CopyFile(src.c_str(), dest.c_str(), FALSE);
-  if (!ret) {
-    for (int i = 0; i < 10; ++i) {
-      std::wstring old = dest + L".old." + std::to_wstring(i);
-      if (MoveFileEx(dest.c_str(), old.c_str(), MOVEFILE_REPLACE_EXISTING)) {
-        MoveFileEx(old.c_str(), NULL, MOVEFILE_DELAY_UNTIL_REBOOT);
-        break;
-      }
-    }
-    ret = CopyFile(src.c_str(), dest.c_str(), FALSE);
+  WeaselDebugLog(L"WeaselSetup",
+                 L"copy_file src=" + src + L" dest=" + dest);
+
+  DWORD src_attr = GetFileAttributesW(src.c_str());
+  if (src_attr == INVALID_FILE_ATTRIBUTES ||
+      (src_attr & FILE_ATTRIBUTE_DIRECTORY)) {
+    WeaselDebugLog(L"WeaselSetup",
+                   L"copy_file source unavailable error=" +
+                       std::to_wstring(GetLastError()));
+    return FALSE;
   }
-  return ret;
+
+  std::wstring temp = dest + L".new";
+  DeleteFileW(temp.c_str());
+  if (!CopyFileW(src.c_str(), temp.c_str(), FALSE)) {
+    WeaselDebugLog(L"WeaselSetup",
+                   L"copy_file temp CopyFile failed error=" +
+                       std::to_wstring(GetLastError()));
+    return FALSE;
+  }
+
+  if (MoveFileExW(temp.c_str(), dest.c_str(),
+                  MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {
+    WeaselDebugLog(L"WeaselSetup", L"copy_file result=1");
+    return TRUE;
+  }
+
+  DWORD replace_error = GetLastError();
+  WeaselDebugLog(L"WeaselSetup",
+                 L"copy_file replace failed error=" +
+                     std::to_wstring(replace_error));
+
+  if (MoveFileExW(temp.c_str(), dest.c_str(),
+                  MOVEFILE_REPLACE_EXISTING | MOVEFILE_DELAY_UNTIL_REBOOT)) {
+    WeaselDebugLog(L"WeaselSetup",
+                   L"copy_file scheduled delayed replace");
+    return TRUE;
+  }
+
+  DWORD delayed_error = GetLastError();
+  DeleteFileW(temp.c_str());
+  WeaselDebugLog(L"WeaselSetup",
+                 L"copy_file delayed replace failed error=" +
+                     std::to_wstring(delayed_error));
+  return FALSE;
 }
 
 BOOL delete_file(const std::wstring& file) {
@@ -271,8 +304,7 @@ int uninstall_ime_file(const std::wstring& ext,
   return retval;
 }
 
-// 注册IME输入法
-// `register_ime` (IMM/.ime) support removed — TSF-only build
+// 注册 TSF 文本服务
 
 void enable_profile(BOOL fEnable, bool hant) {
   HRESULT hr;
@@ -462,7 +494,7 @@ int uninstall(bool silent) {
     RegCloseKey(hKey);
   }
 
-  // IMM/.ime support removed; only uninstall TSF/.dll
+  // Uninstall TSF text service DLL.
   retval += uninstall_ime_file(L".dll", silent, &register_text_service);
 
   // 清除注册信息

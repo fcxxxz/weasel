@@ -95,6 +95,7 @@ class PipeChannel : public PipeChannelBase {
   /* Common pipe operations */
 
   bool Connect() { return _Ensure(); }
+  bool TryConnect() { return _EnsureOnce(); }
   bool Connected() const {
     HANDLE* phandle = _GetPipeHandle();
     return !_Invalid(*phandle);
@@ -130,8 +131,10 @@ class PipeChannel : public PipeChannelBase {
     HANDLE* phandle = _GetPipeHandle();
     if (!result)
       return false;
-    if (_Invalid(*phandle) && !_EnsureOnce())
+    if (_Invalid(*phandle) && !_EnsureOnce()) {
+      ClearBufferStream();
       return false;
+    }
     try {
       _SendOnce(*phandle, msg, false);
       *result = _ReceiveResponse();
@@ -172,7 +175,8 @@ class PipeChannel : public PipeChannelBase {
       _SendOnce(pipe, msg);
     } catch (...) {
       _Reconnect();
-      _SendOnce(pipe, msg);
+      HANDLE* phandle = _GetPipeHandle();
+      _SendOnce(*phandle, msg);
     }
   }
 

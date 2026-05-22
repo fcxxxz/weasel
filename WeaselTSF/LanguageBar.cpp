@@ -9,6 +9,10 @@
 
 static const DWORD LANGBARITEMSINK_COOKIE = 0x42424242;
 
+static std::wstring HandleValue(const void* handle) {
+  return std::to_wstring(reinterpret_cast<uintptr_t>(handle));
+}
+
 static void HMENU2ITfMenu(HMENU hMenu, ITfMenu* pTfMenu) {
   /* NOTE: Only limited functions are supported */
   int N = GetMenuItemCount(hMenu);
@@ -34,14 +38,141 @@ static void HMENU2ITfMenu(HMENU hMenu, ITfMenu* pTfMenu) {
   }
 }
 
-static LPCWSTR GetWeaselRegName() {
-  LPCWSTR WEASEL_REG_NAME_;
-  if (is_wow64())
-    WEASEL_REG_NAME_ = L"Software\\WOW6432Node\\Rime\\Weasel";
-  else
-    WEASEL_REG_NAME_ = L"Software\\Rime\\Weasel";
+static bool QueryMachineStringValue(LPCWSTR key_path,
+                                    LPCWSTR value_name,
+                                    REGSAM view,
+                                    std::wstring& value) {
+  HKEY key = NULL;
+  LSTATUS status =
+      RegOpenKeyExW(HKEY_LOCAL_MACHINE, key_path, 0, KEY_READ | view, &key);
+  if (status != ERROR_SUCCESS)
+    return false;
 
-  return WEASEL_REG_NAME_;
+  WCHAR buffer[MAX_PATH] = {0};
+  DWORD type = 0;
+  DWORD bytes = sizeof(buffer);
+  status = RegQueryValueExW(key, value_name, NULL, &type,
+                            reinterpret_cast<LPBYTE>(buffer), &bytes);
+  RegCloseKey(key);
+  if (status != ERROR_SUCCESS || (type != REG_SZ && type != REG_EXPAND_SZ))
+    return false;
+
+  value = buffer;
+  if (type == REG_EXPAND_SZ) {
+    WCHAR expanded[MAX_PATH] = {0};
+    if (ExpandEnvironmentStringsW(value.c_str(), expanded, _countof(expanded)))
+      value = expanded;
+  }
+  return !value.empty();
+}
+
+static bool QueryMachineStringValueAllViews(LPCWSTR key_path,
+                                            LPCWSTR value_name,
+                                            std::wstring& value) {
+  if (is_wow64() &&
+      QueryMachineStringValue(key_path, value_name, KEY_WOW64_64KEY, value))
+    return true;
+  if (QueryMachineStringValue(key_path, value_name, 0, value))
+    return true;
+  return is_wow64() &&
+         QueryMachineStringValue(key_path, value_name, KEY_WOW64_32KEY, value);
+}
+
+static bool QueryWeaselRoot(std::wstring& dir) {
+  bool ok = QueryMachineStringValueAllViews(L"Software\\Rime\\Weasel",
+                                            L"WeaselRoot", dir);
+  WeaselDebugLog(L"LanguageBar",
+                 L"QueryWeaselRoot ok=" + std::to_wstring(ok) + L" dir=" +
+                     dir);
+  return ok;
+}
+
+static bool QueryWeaselRootFromRunKey(std::wstring& dir) {
+  std::wstring command;
+  if (!QueryMachineStringValueAllViews(
+          L"Software\\Microsoft\\Windows\\CurrentVersion\\Run", L"WeaselServer",
+          command)) {
+    WeaselDebugLog(L"LanguageBar", L"Run key WeaselServer not found");
+    return false;
+  }
+  bool ok = weasel::ServiceRootFromCommandLine(command, dir);
+  WeaselDebugLog(L"LanguageBar",
+                 L"Run key command=" + command + L" parse_ok=" +
+                     std::to_wstring(ok) + L" dir=" + dir);
+  return ok;
+}
+
+static bool QueryWeaselRootFromModule(std::wstring& dir) {
+  dir.clear();
+  WCHAR path[MAX_PATH] = {0};
+  DWORD length = GetModuleFileNameW(g_hInst, path, _countof(path));
+  if (length == 0 || length >= _countof(path)) {
+    WeaselDebugLog(L"LanguageBar", L"Module root lookup failed");
+    return false;
+  }
+
+  std::wstring module_path = path;
+  size_t slash = module_path.find_last_of(L"\\/");
+  if (slash == std::wstring::npos) {
+    WeaselDebugLog(L"LanguageBar",
+                   L"Module root lookup failed: no directory");
+    return false;
+  }
+
+  std::wstring module_dir = module_path.substr(0, slash);
+  std::wstring server = weasel::ServiceExecutablePath(module_dir);
+  bool ok = !server.empty() && fs::exists(server);
+  WeaselDebugLog(L"LanguageBar",
+                 L"Module root lookup module=" + module_path + L" ok=" +
+                     std::to_wstring(ok) + L" dir=" + module_dir +
+                     L" server=" + server);
+  if (!ok)
+    return false;
+
+  dir = module_dir;
+  return true;
+}
+
+static void ShowStartServiceFailure(const std::wstring& server) {
+  std::wstring message = L"无法启动算法服务";
+  if (!server.empty())
+    message += L":\n" + server;
+  MessageBoxW(NULL, message.c_str(), get_weasel_ime_name().c_str(),
+              MB_ICONERROR | MB_OK);
+}
+
+static void ShowServiceQuitFailure() {
+  MessageBoxW(NULL, L"无法退出算法服务", get_weasel_ime_name().c_str(),
+              MB_ICONERROR | MB_OK);
+}
+
+static bool StartWeaselServer(const std::wstring& dir, bool restart) {
+  std::wstring server = weasel::ServiceExecutablePath(dir);
+  WeaselDebugLog(L"LanguageBar",
+                 L"StartWeaselServer restart=" + std::to_wstring(restart) +
+                     L" dir=" + dir + L" server=" + server);
+  if (server.empty()) {
+    WeaselDebugLog(L"LanguageBar", L"StartWeaselServer failed: empty server");
+    ShowStartServiceFailure(server);
+    return false;
+  }
+  SetLastError(ERROR_SUCCESS);
+  HINSTANCE result = ShellExecuteW(
+      NULL, L"open", server.c_str(),
+      restart ? weasel::ServiceManualRestartArgument() : NULL, dir.c_str(),
+      SW_HIDE);
+  if ((uintptr_t)result <= 32) {
+    WeaselDebugLog(L"LanguageBar",
+                   L"ShellExecute failed result=" +
+                       std::to_wstring((uintptr_t)result) + L" last_error=" +
+                       std::to_wstring(GetLastError()));
+    ShowStartServiceFailure(server);
+    return false;
+  }
+  WeaselDebugLog(L"LanguageBar",
+                 L"ShellExecute ok result=" +
+                     std::to_wstring((uintptr_t)result));
+  return true;
 }
 
 static bool open(const std::wstring& path) {
@@ -64,9 +195,13 @@ CLangBarItemButton::CLangBarItemButton(com_ptr<WeaselTSF> pTextService,
   _pTextService = pTextService;
   _guid = guid;
   ascii_mode = false;
+  WeaselDebugLog(L"LanguageBar",
+                 L"CLangBarItemButton created this=" + HandleValue(this));
 }
 
 CLangBarItemButton::~CLangBarItemButton() {
+  WeaselDebugLog(L"LanguageBar",
+                 L"CLangBarItemButton destroyed this=" + HandleValue(this));
   DllRelease();
 }
 
@@ -152,9 +287,16 @@ STDAPI CLangBarItemButton::GetTooltipString(BSTR* pbstrToolTip) {
 STDAPI CLangBarItemButton::OnClick(TfLBIClick click,
                                    POINT pt,
                                    const RECT* prcArea) {
+  WeaselDebugLog(L"LanguageBar",
+                 L"OnClick click=" + std::to_wstring(click) + L" pt=(" +
+                     std::to_wstring(pt.x) + L"," + std::to_wstring(pt.y) +
+                     L") area_null=" + std::to_wstring(prcArea == NULL));
   if (click == TF_LBI_CLK_LEFT) {
-    _pTextService->_HandleLangBarMenuSelect(
-        ascii_mode ? ID_WEASELTRAY_DISABLE_ASCII : ID_WEASELTRAY_ENABLE_ASCII);
+    UINT wID =
+        ascii_mode ? ID_WEASELTRAY_DISABLE_ASCII : ID_WEASELTRAY_ENABLE_ASCII;
+    WeaselDebugLog(L"LanguageBar",
+                   L"OnClick left dispatch wID=" + std::to_wstring(wID));
+    _pTextService->_HandleLangBarMenuSelect(wID);
     ascii_mode = !ascii_mode;
     if (_pLangBarItemSink) {
       _pLangBarItemSink->OnUpdate(TF_LBI_STATUS | TF_LBI_ICON);
@@ -162,36 +304,78 @@ STDAPI CLangBarItemButton::OnClick(TfLBIClick click,
   } else if (click == TF_LBI_CLK_RIGHT) {
     /* Open menu */
     HWND hwnd = _pTextService->_GetFocusedContextWindow();
+    WeaselDebugLog(L"LanguageBar",
+                   L"OnClick right focused_hwnd=" + HandleValue(hwnd));
     if (hwnd != NULL) {
       LANGID langid = get_language_id();
-      HMENU menu;
+      UINT menu_resource = IDR_MENU_POPUP;
       if (langid == TEXTSERVICE_LANGID_HANS) {
-        menu = LoadMenuW(g_hInst, MAKEINTRESOURCE(IDR_MENU_POPUP_HANS));
+        menu_resource = IDR_MENU_POPUP_HANS;
       } else if (langid == TEXTSERVICE_LANGID_HANT) {
-        menu = LoadMenuW(g_hInst, MAKEINTRESOURCE(IDR_MENU_POPUP_HANT));
-      } else {
-        menu = LoadMenuW(g_hInst, MAKEINTRESOURCE(IDR_MENU_POPUP));
+        menu_resource = IDR_MENU_POPUP_HANT;
       }
+      SetLastError(ERROR_SUCCESS);
+      HMENU menu = LoadMenuW(g_hInst, MAKEINTRESOURCE(menu_resource));
+      WeaselDebugLog(L"LanguageBar",
+                     L"OnClick right LoadMenu resource=" +
+                         std::to_wstring(menu_resource) + L" menu=" +
+                         HandleValue(menu) + L" last_error=" +
+                         std::to_wstring(GetLastError()));
+      if (menu == NULL)
+        return S_OK;
       HMENU popupMenu = GetSubMenu(menu, 0);
+      WeaselDebugLog(L"LanguageBar",
+                     L"OnClick right popup=" + HandleValue(popupMenu));
+      if (popupMenu == NULL) {
+        DestroyMenu(menu);
+        return S_OK;
+      }
       UINT wID = TrackPopupMenuEx(
           popupMenu, TPM_NONOTIFY | TPM_RETURNCMD | TPM_HORPOSANIMATION, pt.x,
           pt.y, hwnd, NULL);
+      WeaselDebugLog(L"LanguageBar",
+                     L"OnClick right TrackPopupMenuEx wID=" +
+                         std::to_wstring(wID));
       DestroyMenu(menu);
+      if (weasel::IsTrayMenuSelectionCancelled(wID)) {
+        WeaselDebugLog(L"LanguageBar",
+                       L"OnClick right menu cancelled or dismissed");
+        return S_OK;
+      }
       _pTextService->_HandleLangBarMenuSelect(wID);
+    } else {
+      WeaselDebugLog(L"LanguageBar",
+                     L"OnClick right ignored: no focused context window");
     }
   }
   return S_OK;
 }
 
 STDAPI CLangBarItemButton::InitMenu(ITfMenu* pMenu) {
+  WeaselDebugLog(L"LanguageBar",
+                 L"InitMenu pMenu=" + HandleValue(pMenu));
+  SetLastError(ERROR_SUCCESS);
   HMENU menu = LoadMenuW(g_hInst, MAKEINTRESOURCE(IDR_MENU_POPUP));
+  WeaselDebugLog(L"LanguageBar",
+                 L"InitMenu LoadMenu menu=" + HandleValue(menu) +
+                     L" last_error=" + std::to_wstring(GetLastError()));
+  if (menu == NULL)
+    return E_FAIL;
   HMENU popupMenu = GetSubMenu(menu, 0);
+  WeaselDebugLog(L"LanguageBar",
+                 L"InitMenu popup=" + HandleValue(popupMenu));
+  if (popupMenu == NULL) {
+    DestroyMenu(menu);
+    return E_FAIL;
+  }
   HMENU2ITfMenu(popupMenu, pMenu);
   DestroyMenu(menu);
   return S_OK;
 }
 
 STDAPI CLangBarItemButton::OnMenuSelect(UINT wID) {
+  WeaselDebugLog(L"LanguageBar",
+                 L"OnMenuSelect wID=" + std::to_wstring(wID));
   _pTextService->_HandleLangBarMenuSelect(wID);
   return S_OK;
 }
@@ -289,25 +473,43 @@ void CLangBarItemButton::SetLangbarStatus(DWORD dwStatus, BOOL fSet) {
 
 std::wstring WeaselTSF::_GetRootDir() {
   std::wstring dir{};
-  RegGetStringValue(HKEY_LOCAL_MACHINE, GetWeaselRegName(), L"WeaselRoot", dir);
+  if (QueryWeaselRoot(dir))
+    return dir;
+  if (QueryWeaselRootFromRunKey(dir))
+    return dir;
+  QueryWeaselRootFromModule(dir);
   return dir;
 }
 
 void WeaselTSF::_HandleLangBarMenuSelect(UINT wID) {
+  WeaselDebugLog(L"LanguageBar",
+                 L"HandleLangBarMenuSelect wID=" + std::to_wstring(wID));
+  if (weasel::IsTrayMenuSelectionCancelled(wID)) {
+    WeaselDebugLog(L"LanguageBar",
+                   L"HandleLangBarMenuSelect ignored cancelled menu");
+    return;
+  }
   std::wstring dir{};
   switch (wID) {
     case ID_WEASELTRAY_RERUN_SERVICE:
     case ID_WEASELTRAY_INSTALLDIR:
-      if (RegGetStringValue(HKEY_LOCAL_MACHINE, GetWeaselRegName(),
-                            L"WeaselRoot", dir) == ERROR_SUCCESS) {
+      dir = _GetRootDir();
+      if (wID == ID_WEASELTRAY_RERUN_SERVICE) {
+        WeaselDebugLog(L"LanguageBar",
+                       L"Handle rerun service menu root_dir=" + dir);
+      }
+      if (!dir.empty()) {
         if (wID == ID_WEASELTRAY_RERUN_SERVICE) {
           std::thread th([dir]() {
-            ShellExecuteW(NULL, L"open", (dir + L"\\start_service.bat").c_str(),
-                          NULL, dir.c_str(), SW_HIDE);
+            StartWeaselServer(dir, true);
           });
           th.detach();
         } else
           open(dir);
+      } else if (wID == ID_WEASELTRAY_RERUN_SERVICE) {
+        WeaselDebugLog(L"LanguageBar",
+                       L"Handle rerun service menu failed: empty root_dir");
+        ShowStartServiceFailure(L"");
       }
       break;
     case ID_WEASELTRAY_USERCONFIG:
@@ -327,6 +529,10 @@ void WeaselTSF::_HandleLangBarMenuSelect(UINT wID) {
     case ID_WEASELTRAY_LOGDIR:
       open(WeaselLogPath().wstring());
       break;
+    case ID_WEASELTRAY_QUIT:
+      if (!m_client.TrayCommandSync(wID))
+        ShowServiceQuitFailure();
+      break;
     case ID_WEASELTRAY_WIKI:
       open(L"https://rime.im/docs/");
       break;
@@ -334,6 +540,8 @@ void WeaselTSF::_HandleLangBarMenuSelect(UINT wID) {
       open(L"https://rime.im/discuss/");
       break;
     default:
+      WeaselDebugLog(L"LanguageBar",
+                     L"Forward TrayCommand wID=" + std::to_wstring(wID));
       m_client.TrayCommand(wID);
       break;
   }
@@ -369,19 +577,28 @@ BOOL WeaselTSF::_InitLanguageBar() {
   com_ptr<ITfLangBarItemMgr> pLangBarItemMgr;
   BOOL fRet = FALSE;
 
-  if (_pThreadMgr->QueryInterface(&pLangBarItemMgr) != S_OK)
+  WeaselDebugLog(L"LanguageBar", L"InitLanguageBar start");
+  HRESULT hr = _pThreadMgr->QueryInterface(&pLangBarItemMgr);
+  WeaselDebugLog(L"LanguageBar",
+                 L"InitLanguageBar QueryInterface hr=" +
+                     std::to_wstring(hr));
+  if (hr != S_OK)
     return FALSE;
 
   if ((_pLangBarButton = new CLangBarItemButton(this, GUID_LBI_INPUTMODE,
                                                 _cand->style())) == NULL)
     return FALSE;
 
-  if (pLangBarItemMgr->AddItem(_pLangBarButton) != S_OK) {
+  hr = pLangBarItemMgr->AddItem(_pLangBarButton);
+  WeaselDebugLog(L"LanguageBar",
+                 L"InitLanguageBar AddItem hr=" + std::to_wstring(hr));
+  if (hr != S_OK) {
     _pLangBarButton = NULL;
     return FALSE;
   }
 
   _pLangBarButton->Show(TRUE);
+  WeaselDebugLog(L"LanguageBar", L"InitLanguageBar Show(TRUE)");
   fRet = TRUE;
 
   return fRet;
@@ -390,14 +607,19 @@ BOOL WeaselTSF::_InitLanguageBar() {
 void WeaselTSF::_UninitLanguageBar() {
   com_ptr<ITfLangBarItemMgr> pLangBarItemMgr;
 
-  if (_pLangBarButton == NULL)
+  if (_pLangBarButton == NULL) {
+    WeaselDebugLog(L"LanguageBar",
+                   L"UninitLanguageBar skipped: no langbar button");
     return;
+  }
 
   if (_pThreadMgr->QueryInterface(&pLangBarItemMgr) == S_OK) {
+    WeaselDebugLog(L"LanguageBar", L"UninitLanguageBar RemoveItem");
     pLangBarItemMgr->RemoveItem(_pLangBarButton);
   }
 
   _pLangBarButton = NULL;
+  WeaselDebugLog(L"LanguageBar", L"UninitLanguageBar done");
 }
 
 void WeaselTSF::_UpdateLanguageBar(weasel::Status stat) {

@@ -8,6 +8,8 @@
 
 #include "SecurityAttribute.h"
 
+#define WM_WEASEL_SERVICE_NOTIFY (WEASEL_IPC_LAST_COMMAND + 200)
+
 namespace weasel {
 class PipeServer;
 
@@ -28,6 +30,7 @@ class ServerImpl : public CWindowImpl<ServerImpl, CWindow, ServerWinTraits>
   MESSAGE_HANDLER(WM_DWMCOLORIZATIONCOLORCHANGED, OnColorChange)
   MESSAGE_HANDLER(WM_SETTINGCHANGE, OnColorChange)
   MESSAGE_HANDLER(WM_COMMAND, OnCommand)
+  MESSAGE_HANDLER(WM_WEASEL_SERVICE_NOTIFY, OnServiceNotifyMessage)
   END_MSG_MAP()
 
   LRESULT OnColorChange(UINT uMsg,
@@ -46,6 +49,10 @@ class ServerImpl : public CWindowImpl<ServerImpl, CWindow, ServerWinTraits>
                              LPARAM lParam,
                              BOOL& bHandled);
   LRESULT OnCommand(UINT uMsg, WPARAM wParam, LPARAM lParam, BOOL& bHandled);
+  LRESULT OnServiceNotifyMessage(UINT uMsg,
+                                 WPARAM wParam,
+                                 LPARAM lParam,
+                                 BOOL& bHandled);
   DWORD OnCommand(WEASEL_IPC_COMMAND uMsg, DWORD wParam, DWORD lParam);
   DWORD OnEcho(WEASEL_IPC_COMMAND uMsg, DWORD wParam, DWORD lParam);
   DWORD OnStartSession(WEASEL_IPC_COMMAND uMsg, DWORD wParam, DWORD lParam);
@@ -55,6 +62,9 @@ class ServerImpl : public CWindowImpl<ServerImpl, CWindow, ServerWinTraits>
                              DWORD wParam,
                              DWORD lParam);
   DWORD OnShutdownServer(WEASEL_IPC_COMMAND uMsg, DWORD wParam, DWORD lParam);
+  DWORD OnServiceNotification(WEASEL_IPC_COMMAND uMsg,
+                              DWORD wParam,
+                              DWORD lParam);
   DWORD OnFocusIn(WEASEL_IPC_COMMAND uMsg, DWORD wParam, DWORD lParam);
   DWORD OnFocusOut(WEASEL_IPC_COMMAND uMsg, DWORD wParam, DWORD lParam);
   DWORD OnUpdateInputPosition(WEASEL_IPC_COMMAND uMsg,
@@ -92,6 +102,7 @@ class ServerImpl : public CWindowImpl<ServerImpl, CWindow, ServerWinTraits>
 
  private:
   void _Finailize();
+  void PostServiceNotification(DWORD notification);
   DWORD DispatchPipeMessage(PipeMessage pipe_msg);
   template <typename _Resp>
   void HandlePipeMessage(PipeMessage pipe_msg, _Resp resp);

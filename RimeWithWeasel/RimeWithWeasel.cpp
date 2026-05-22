@@ -42,6 +42,7 @@ RimeWithWeaselHandler::RimeWithWeaselHandler(UI* ui)
       m_global_ascii_mode(false),
       m_show_notifications_time(1200),
       _UpdateUICallback(NULL),
+      _ServiceNotificationCallback(NULL),
       m_tray_icon_signature() {
   m_ui->InServer() = true;
   rime_api = rime_get_api();
@@ -158,8 +159,12 @@ void RimeWithWeaselHandler::Finalize() {
 DWORD RimeWithWeaselHandler::FindSession(WeaselSessionId ipc_id) {
   if (m_disabled)
     return 0;
-  Bool found = rime_api->find_session(to_session_id(ipc_id));
-  DLOG(INFO) << "Find session: session_id = " << to_session_id(ipc_id)
+  auto it = m_session_status_map.find(ipc_id);
+  if (it == m_session_status_map.end())
+    return 0;
+  RimeSessionId session_id = it->second.session_id;
+  Bool found = session_id && rime_api->find_session(session_id);
+  DLOG(INFO) << "Find session: session_id = " << session_id
              << ", found = " << found;
   return found ? (ipc_id) : 0;
 }
@@ -268,7 +273,9 @@ BOOL RimeWithWeaselHandler::ProcessKeyEvent(KeyEvent keyEvent,
              << ", mask = " << keyEvent.mask << ", ipc_id = " << ipc_id;
   if (m_disabled)
     return FALSE;
-  RimeSessionId session_id = to_session_id(ipc_id);
+  SessionStatus& session_status = get_session_status(ipc_id);
+  RimeSessionId session_id = session_status.session_id;
+  bool was_composing = !!session_status.status.is_composing;
   Bool handled = rime_api->process_key(session_id, keyEvent.keycode,
                                        expand_ibus_modifier(keyEvent.mask));
   // vim_mode when keydown only
@@ -286,10 +293,23 @@ BOOL RimeWithWeaselHandler::ProcessKeyEvent(KeyEvent keyEvent,
     }
   }
   RimeUiStatusSnapshot status_snapshot;
-  _Respond(ipc_id, eat, &status_snapshot);
+  bool has_commit = false;
+  _Respond(ipc_id, eat, &status_snapshot, &has_commit);
   _UpdateUI(ipc_id, &status_snapshot);
   m_active_session = ipc_id;
-  return (BOOL)handled;
+  bool is_composing =
+      status_snapshot.has_status ? status_snapshot.status.composing
+                                 : was_composing;
+  bool should_eat =
+      ShouldEatKeyEvent(handled, has_commit, was_composing, is_composing);
+  if (ShouldTraceKeyEvents() && !handled && has_commit) {
+    WeaselDebugLog(L"RimeWithWeasel",
+                   L"force key eaten because response has commit keycode=" +
+                       std::to_wstring(keyEvent.keycode) + L" mask=" +
+                       std::to_wstring(keyEvent.mask) + L" ipc_id=" +
+                       std::to_wstring(ipc_id));
+  }
+  return (BOOL)should_eat;
 }
 
 void RimeWithWeaselHandler::CommitComposition(WeaselSessionId ipc_id) {
@@ -482,13 +502,33 @@ void RimeWithWeaselHandler::StartMaintenance() {
   _UpdateUI(0);
 }
 
-void RimeWithWeaselHandler::EndMaintenance() {
+void RimeWithWeaselHandler::EndMaintenance(DWORD result) {
+  bool deploy_result = IsMaintenanceDeployResult(result);
+  if (deploy_result) {
+    _SetDeployMessage(result);
+  }
   if (m_disabled) {
     Initialize();
     _InvalidateTrayIconSignature();
     _UpdateUI(0);
   }
+  if (deploy_result) {
+    NotifyService(result);
+  }
   m_session_status_map.clear();
+}
+
+void RimeWithWeaselHandler::_SetDeployMessage(DWORD result) {
+  std::lock_guard<std::mutex> lock(m_notifier_mutex);
+  m_message_type = "deploy";
+  m_message_value = MaintenanceDeployMessageValue(result);
+  m_message_label.clear();
+  m_option_name.clear();
+}
+
+void RimeWithWeaselHandler::NotifyService(DWORD notification) {
+  if (_ServiceNotificationCallback)
+    _ServiceNotificationCallback(notification);
 }
 
 void RimeWithWeaselHandler::SetOption(WeaselSessionId ipc_id,
@@ -511,6 +551,16 @@ void RimeWithWeaselHandler::OnUpdateUI(std::function<void()> const& cb) {
   _UpdateUICallback = cb;
 }
 
+void RimeWithWeaselHandler::OnMaintenanceResult(
+    std::function<void(DWORD)> const& cb) {
+  OnServiceNotification(cb);
+}
+
+void RimeWithWeaselHandler::OnServiceNotification(
+    std::function<void(DWORD)> const& cb) {
+  _ServiceNotificationCallback = cb;
+}
+
 bool RimeWithWeaselHandler::_IsDeployerRunning() {
   HANDLE hMutex = CreateMutex(NULL, TRUE, L"WeaselDeployerMutex");
   bool deployer_detected = hMutex && GetLastError() == ERROR_ALREADY_EXISTS;
@@ -530,22 +580,24 @@ void RimeWithWeaselHandler::_UpdateUI(
   Status weasel_status = m_ui->status();
   Context weasel_context;
 
-  RimeSessionId session_id = to_session_id(ipc_id);
+  RimeSessionId session_id = ipc_id ? to_session_id(ipc_id) : 0;
 
-  if (ipc_id == 0)
+  if (ipc_id == 0) {
     weasel_status.disabled = m_disabled;
-
-  if (status_snapshot && status_snapshot->has_status)
+  } else if (status_snapshot && status_snapshot->has_status) {
     _ApplyStatusSnapshot(weasel_status, ipc_id, weasel_context,
                          *status_snapshot);
-  else
+  } else {
     _GetStatus(weasel_status, ipc_id, weasel_context);
+  }
 
-  SessionStatus& session_status = get_session_status(ipc_id);
-  if (rime_api->get_option(session_id, "inline_preedit"))
-    session_status.style.client_caps |= INLINE_PREEDIT_CAPABLE;
-  else
-    session_status.style.client_caps &= ~INLINE_PREEDIT_CAPABLE;
+  if (ipc_id != 0) {
+    SessionStatus& session_status = get_session_status(ipc_id);
+    if (rime_api->get_option(session_id, "inline_preedit"))
+      session_status.style.client_caps |= INLINE_PREEDIT_CAPABLE;
+    else
+      session_status.style.client_caps &= ~INLINE_PREEDIT_CAPABLE;
+  }
 
   if (!_ShowMessage(weasel_context, weasel_status) &&
       RimeUiNeedsUpdate(m_ui->ctx(), m_ui->status(), weasel_context,
@@ -700,6 +752,11 @@ bool RimeWithWeaselHandler::_ShowMessage(Context& ctx, Status& status) {
   std::lock_guard<std::mutex> lock(m_notifier_mutex);
   if (m_message_type.empty() || m_message_value.empty())
     return m_ui->IsCountingDown();
+  if (ShouldSuppressInlineOptionNotification(m_message_type,
+                                             m_message_value)) {
+    status.type = SCHEMA;
+    return m_ui->IsCountingDown();
+  }
   // show as auxiliary string
   std::wstring& tips(ctx.aux.str);
   bool show_icon = false;
@@ -767,16 +824,21 @@ inline std::string _GetLabelText(const std::vector<Text>& labels,
 bool RimeWithWeaselHandler::_Respond(
     WeaselSessionId ipc_id,
     EatLine eat,
-    RimeUiStatusSnapshot* status_snapshot) {
+    RimeUiStatusSnapshot* status_snapshot,
+    bool* has_commit) {
   std::wstring body;
   body.reserve(4096);
   std::vector<const char*> actions;
   actions.reserve(8);
+  if (has_commit)
+    *has_commit = false;
 
   SessionStatus& session_status = get_session_status(ipc_id);
   RimeSessionId session_id = session_status.session_id;
   RIME_STRUCT(RimeCommit, commit);
   if (rime_api->get_commit(session_id, &commit)) {
+    if (has_commit)
+      *has_commit = true;
     actions.push_back("commit");
     std::wstring commit_text_w = escape_string(u8tow(commit.text));
     body.append(L"commit=").append(commit_text_w).append(L"\n");
