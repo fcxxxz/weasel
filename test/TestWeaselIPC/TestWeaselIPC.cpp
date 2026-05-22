@@ -67,28 +67,28 @@ int unit_main() {
   BOOST_TEST(weasel::ShouldEatKeyEvent(FALSE, FALSE, TRUE, FALSE));
   BOOST_TEST(!weasel::ShouldEatKeyEvent(FALSE, FALSE, FALSE, FALSE));
   BOOST_TEST(!weasel::ShouldEatKeyEvent(FALSE, FALSE, TRUE, TRUE));
-  BOOST_TEST(!weasel::ShouldEatTestKeyEvent(false, false, false, false, false,
-                                            'A'));
+  BOOST_TEST(
+      !weasel::ShouldEatTestKeyEvent(false, false, false, false, false, 'A'));
   BOOST_TEST(!weasel::ShouldEatTestKeyEvent(false, false, false, false, false,
                                             true, 'A'));
-  BOOST_TEST(weasel::ShouldEatTestKeyEvent(false, false, false, false, true,
-                                           'A'));
-  BOOST_TEST(!weasel::ShouldEatTestKeyEvent(true, false, false, false, true,
-                                            'A'));
+  BOOST_TEST(
+      weasel::ShouldEatTestKeyEvent(false, false, false, false, true, 'A'));
+  BOOST_TEST(
+      !weasel::ShouldEatTestKeyEvent(true, false, false, false, true, 'A'));
   BOOST_TEST(!weasel::ShouldEatTestKeyEvent(true, false, false, false, true,
                                             VK_SPACE));
-  BOOST_TEST(weasel::ShouldEatTestKeyEvent(true, false, false, false, true,
-                                           VK_SHIFT));
-  BOOST_TEST(weasel::ShouldEatTestKeyEvent(true, true, false, false, true,
-                                           'A'));
+  BOOST_TEST(
+      weasel::ShouldEatTestKeyEvent(true, false, false, false, true, VK_SHIFT));
+  BOOST_TEST(
+      weasel::ShouldEatTestKeyEvent(true, true, false, false, true, 'A'));
   BOOST_TEST(!weasel::ShouldEatTestKeyEvent(false, false, false, false, true,
                                             VK_BACK));
-  BOOST_TEST(weasel::ShouldEatTestKeyEvent(false, false, true, false, true,
-                                           VK_BACK));
-  BOOST_TEST(!weasel::ShouldEatTestKeyEvent(false, false, false, true, true,
-                                            'C'));
-  BOOST_TEST(weasel::ShouldEatTestKeyEvent(false, false, true, true, true,
-                                           'C'));
+  BOOST_TEST(
+      weasel::ShouldEatTestKeyEvent(false, false, true, false, true, VK_BACK));
+  BOOST_TEST(
+      !weasel::ShouldEatTestKeyEvent(false, false, false, true, true, 'C'));
+  BOOST_TEST(
+      weasel::ShouldEatTestKeyEvent(false, false, true, true, true, 'C'));
   BOOST_TEST(weasel::IsTextVirtualKey('A'));
   BOOST_TEST(weasel::IsTextVirtualKey(VK_SPACE));
   BOOST_TEST(!weasel::IsTextVirtualKey(VK_SHIFT));
@@ -145,8 +145,8 @@ int unit_main() {
              weasel::WEASEL_IPC_SERVICE_NOTIFICATION_RESTART_SUCCESS);
   BOOST_TEST(!wcscmp(weasel::ServiceExecutableName(), L"WeaselServer.exe"));
   BOOST_TEST(!wcscmp(weasel::ServiceRestartArgument(), L"/restart"));
-  BOOST_TEST(!wcscmp(weasel::ServiceManualRestartArgument(),
-                     L"/restart-manual"));
+  BOOST_TEST(
+      !wcscmp(weasel::ServiceManualRestartArgument(), L"/restart-manual"));
   BOOST_TEST(!wcscmp(weasel::ServiceRecoveryArgument(), L"/recover"));
   BOOST_TEST(!wcscmp(weasel::ServiceStartupArgument(), L"/startup"));
   BOOST_TEST(!wcscmp(weasel::ServiceStopArgument(), L"/stop"));
@@ -226,8 +226,10 @@ int unit_main() {
     weasel::MarkServiceManualExit();
     BOOST_TEST(weasel::IsServiceManualExitMarked());
     BOOST_TEST(!weasel::ShouldAutoRecoverService());
-    BOOST_TEST(!weasel::ShouldSuppressServiceRecoveryAfterManualExit(L"/restart"));
-    BOOST_TEST(weasel::ShouldSuppressServiceRecoveryAfterManualExit(L"/recover"));
+    BOOST_TEST(
+        !weasel::ShouldSuppressServiceRecoveryAfterManualExit(L"/restart"));
+    BOOST_TEST(
+        weasel::ShouldSuppressServiceRecoveryAfterManualExit(L"/recover"));
     BOOST_TEST(!weasel::ShouldSuppressServiceRecoveryAfterManualExit(L""));
     BOOST_TEST(!weasel::ShouldSuppressServiceRecoveryAfterManualExit(L"/q"));
     BOOST_TEST(weasel::ShouldSuppressServiceStartAfterManualExit(L""));
@@ -265,7 +267,8 @@ int unit_main() {
 
   BOOST_TEST(weasel::IsTrayMenuSelectionCancelled(0));
   BOOST_TEST(!weasel::IsTrayMenuSelectionCancelled(ID_WEASELTRAY_QUIT));
-  BOOST_TEST(!weasel::IsTrayMenuSelectionCancelled(ID_WEASELTRAY_RERUN_SERVICE));
+  BOOST_TEST(
+      !weasel::IsTrayMenuSelectionCancelled(ID_WEASELTRAY_RERUN_SERVICE));
 
   weasel::UIStyle style;
   weasel::Status status;
@@ -392,15 +395,13 @@ int unit_main() {
 
   weasel::Status next_status = current_status;
   next_status.ascii_mode = true;
-  BOOST_TEST(RimeUiNeedsUpdate(current_context, current_status,
-                               current_context, next_status));
+  BOOST_TEST(RimeUiNeedsUpdate(current_context, current_status, current_context,
+                               next_status));
 
   BOOST_TEST(ShouldSuppressInlineOptionNotification("option", "ascii_mode"));
   BOOST_TEST(ShouldSuppressInlineOptionNotification("option", "!ascii_mode"));
-  BOOST_TEST(
-      !ShouldSuppressInlineOptionNotification("option", "full_shape"));
-  BOOST_TEST(
-      !ShouldSuppressInlineOptionNotification("option", "!full_shape"));
+  BOOST_TEST(!ShouldSuppressInlineOptionNotification("option", "full_shape"));
+  BOOST_TEST(!ShouldSuppressInlineOptionNotification("option", "!full_shape"));
   BOOST_TEST(!ShouldSuppressInlineOptionNotification("deploy", "success"));
   BOOST_TEST(!ShouldSuppressInlineOptionNotification("schema", "luna_pinyin"));
 

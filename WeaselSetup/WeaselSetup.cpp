@@ -102,8 +102,8 @@ static int CustomInstall(bool installing) {
   WeaselDebugLog(L"WeaselSetup",
                  L"CustomInstall installing=" + std::to_wstring(installing) +
                      L" has_installed=" + std::to_wstring(_has_installed) +
-                     L" silent=" + std::to_wstring(silent) +
-                     L" install_tsf=" + std::to_wstring(install_tsf));
+                     L" silent=" + std::to_wstring(silent) + L" install_tsf=" +
+                     std::to_wstring(install_tsf));
   if (install_tsf)
     if (0 != install(hant, silent))
       return 1;
@@ -135,8 +135,8 @@ static int CustomInstall(bool installing) {
                     weasel::ServiceStopArgument(), NULL, SW_SHOWNORMAL);
       Sleep(500);
       ShellExecuteW(NULL, NULL, (dir + L"\\WeaselServer.exe").c_str(),
-                    weasel::ServiceManualRestartArgument(),
-                    NULL, SW_SHOWNORMAL);
+                    weasel::ServiceManualRestartArgument(), NULL,
+                    SW_SHOWNORMAL);
       Sleep(500);
       ShellExecuteW(NULL, NULL, (dir + L"\\WeaselDeployer.exe").c_str(),
                     L"/deploy", NULL, SW_SHOWNORMAL);

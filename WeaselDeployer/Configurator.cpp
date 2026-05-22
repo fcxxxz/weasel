@@ -152,9 +152,9 @@ int Configurator::UpdateWorkspace(bool report_errors) {
 
   if (client.TryConnect()) {
     LOG(INFO) << "Resuming service.";
-    client.EndMaintenance(
-        deployed ? weasel::WEASEL_IPC_MAINTENANCE_DEPLOY_SUCCESS
-                 : weasel::WEASEL_IPC_MAINTENANCE_DEPLOY_FAILURE);
+    client.EndMaintenance(deployed
+                              ? weasel::WEASEL_IPC_MAINTENANCE_DEPLOY_SUCCESS
+                              : weasel::WEASEL_IPC_MAINTENANCE_DEPLOY_FAILURE);
   }
   return deployed ? 0 : 1;
 }

@@ -31,15 +31,14 @@ inline bool IsTextVirtualKey(WPARAM wParam) {
   return (wParam >= L'0' && wParam <= L'9') ||
          (wParam >= L'A' && wParam <= L'Z') ||
          (wParam >= VK_NUMPAD0 && wParam <= VK_DIVIDE) ||
-         (wParam >= VK_OEM_1 && wParam <= VK_OEM_102) ||
-         wParam == VK_PACKET || wParam == VK_SPACE;
+         (wParam >= VK_OEM_1 && wParam <= VK_OEM_102) || wParam == VK_PACKET ||
+         wParam == VK_SPACE;
 }
 
 inline bool IsModeSwitchVirtualKey(WPARAM wParam) {
-  return wParam == VK_SHIFT || wParam == VK_LSHIFT ||
-         wParam == VK_RSHIFT || wParam == VK_CONTROL ||
-         wParam == VK_LCONTROL || wParam == VK_RCONTROL ||
-         wParam == VK_CAPITAL;
+  return wParam == VK_SHIFT || wParam == VK_LSHIFT || wParam == VK_RSHIFT ||
+         wParam == VK_CONTROL || wParam == VK_LCONTROL ||
+         wParam == VK_RCONTROL || wParam == VK_CAPITAL;
 }
 
 inline bool ShouldEatTestKeyEvent(bool service_available,
@@ -75,8 +74,7 @@ inline bool ShouldEatTestKeyEvent(bool ascii_mode,
 }
 
 struct KeyEventTestCache {
-  KeyEventTestCache()
-      : entries(), next_entry(0), matched_entry(-1) {}
+  KeyEventTestCache() : entries(), next_entry(0), matched_entry(-1) {}
 
   bool Matches(bool is_key_up, WPARAM wParam, LPARAM lParam) const {
     matched_entry = -1;

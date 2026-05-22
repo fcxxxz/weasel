@@ -34,7 +34,8 @@ struct ParentProcessInfo {
   }
 };
 
-static DWORD GetParentProcessId(DWORD pid, std::wstring* parent_name = nullptr) {
+static DWORD GetParentProcessId(DWORD pid,
+                                std::wstring* parent_name = nullptr) {
   DWORD parent_pid = 0;
   HANDLE snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
   if (snapshot == INVALID_HANDLE_VALUE)
@@ -193,22 +194,18 @@ int WINAPI _tWinMain(HINSTANCE hInstance,
              weasel::ShouldClearServiceManualExit(lpstrCmdLine)) {
     weasel::ClearServiceManualExit();
   }
-  WeaselDebugLog(L"WeaselServer",
-                  L"service command quit=" + std::to_wstring(quit) +
-                      L" stop_requested=" +
-                      std::to_wstring(stop_requested) +
-                      L" restart_requested=" +
-                     std::to_wstring(restart_requested) +
-                     L" recovery_requested=" +
-                     std::to_wstring(recovery_requested) +
-                     L" startup_requested=" +
-                     std::to_wstring(startup_requested) +
-                     L" implicit_start=" + std::to_wstring(implicit_start) +
-                     L" check_updates=" + std::to_wstring(check_updates) +
-                     L" legacy_manual_restart=" +
-                     std::to_wstring(legacy_restart_from_interactive_parent) +
-                     L" manual_exit_marked=" +
-                     std::to_wstring(weasel::IsServiceManualExitMarked()));
+  WeaselDebugLog(
+      L"WeaselServer",
+      L"service command quit=" + std::to_wstring(quit) + L" stop_requested=" +
+          std::to_wstring(stop_requested) + L" restart_requested=" +
+          std::to_wstring(restart_requested) + L" recovery_requested=" +
+          std::to_wstring(recovery_requested) + L" startup_requested=" +
+          std::to_wstring(startup_requested) + L" implicit_start=" +
+          std::to_wstring(implicit_start) + L" check_updates=" +
+          std::to_wstring(check_updates) + L" legacy_manual_restart=" +
+          std::to_wstring(legacy_restart_from_interactive_parent) +
+          L" manual_exit_marked=" +
+          std::to_wstring(weasel::IsServiceManualExitMarked()));
   if (!quit && !legacy_restart_from_interactive_parent &&
       weasel::ShouldSuppressServiceStartAfterManualExit(lpstrCmdLine)) {
     WeaselDebugLog(
@@ -220,9 +217,8 @@ int WINAPI _tWinMain(HINSTANCE hInstance,
   {
     weasel::Client client;
     bool connected = client.TryConnect();
-    WeaselDebugLog(L"WeaselServer",
-                   L"initial TryConnect connected=" +
-                       std::to_wstring(connected));
+    WeaselDebugLog(L"WeaselServer", L"initial TryConnect connected=" +
+                                        std::to_wstring(connected));
     if (connected)  // try to connect to running server
     {
       if (check_updates) {
@@ -261,8 +257,7 @@ int WINAPI _tWinMain(HINSTANCE hInstance,
                        L"restart wait retry=" + std::to_wstring(retry) +
                            L" still_connected=" +
                            std::to_wstring(still_connected) +
-                           L" mutex_present=" +
-                           std::to_wstring(mutex_present));
+                           L" mutex_present=" + std::to_wstring(mutex_present));
         if (!still_connected && !mutex_present)
           break;
         if (still_connected && retry == 24)
@@ -278,8 +273,7 @@ int WINAPI _tWinMain(HINSTANCE hInstance,
         return 0;
       }
     } else if (quit || stop_requested) {
-      WeaselDebugLog(L"WeaselServer",
-                     L"exit: stop requested but no server");
+      WeaselDebugLog(L"WeaselServer", L"exit: stop requested but no server");
       return 0;
     }
   }
@@ -308,7 +302,8 @@ int WINAPI _tWinMain(HINSTANCE hInstance,
         restart_requested, restarted_existing_server));
     RegisterApplicationRestart(weasel::ServiceRecoveryArgument(), 0);
     nRet = app.Run();
-    WeaselDebugLog(L"WeaselServer", L"app.Run returned " + std::to_wstring(nRet));
+    WeaselDebugLog(L"WeaselServer",
+                   L"app.Run returned " + std::to_wstring(nRet));
   } catch (...) {
     // bad luck...
     WeaselDebugLog(L"WeaselServer", L"exception while running app");

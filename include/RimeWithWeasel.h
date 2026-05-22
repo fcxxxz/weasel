@@ -54,8 +54,7 @@ struct RimeTrayIconSignature {
   }
 
   bool operator==(const RimeTrayIconSignature& rhs) const {
-    return valid == rhs.valid &&
-           display_tray_icon == rhs.display_tray_icon &&
+    return valid == rhs.valid && display_tray_icon == rhs.display_tray_icon &&
            disabled == rhs.disabled && ascii_mode == rhs.ascii_mode &&
            current_zhung_icon == rhs.current_zhung_icon &&
            current_ascii_icon == rhs.current_ascii_icon;

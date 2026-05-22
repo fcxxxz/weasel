@@ -259,9 +259,8 @@ void ClientImpl::FocusOut() {
 void ClientImpl::TrayCommand(UINT menuId) {
   std::unique_lock<std::recursive_mutex> lock(client_mutex, std::try_to_lock);
   if (!lock.owns_lock()) {
-    WeaselDebugLog(L"WeaselClient",
-                   L"TrayCommand skipped: busy menuId=" +
-                       std::to_wstring(menuId));
+    WeaselDebugLog(L"WeaselClient", L"TrayCommand skipped: busy menuId=" +
+                                        std::to_wstring(menuId));
     return;
   }
   DWORD result = 0;
@@ -272,7 +271,7 @@ void ClientImpl::TrayCommand(UINT menuId) {
                      L" session_id=" + std::to_wstring(session_id) +
                      L" connected=" + std::to_wstring(channel.Connected()) +
                      L" ok=" + std::to_wstring(ok) + L" result=" +
-                      std::to_wstring(result));
+                     std::to_wstring(result));
 }
 
 bool ClientImpl::TrayCommandSync(UINT menuId) {
@@ -283,8 +282,8 @@ bool ClientImpl::TrayCommandSync(UINT menuId) {
   if (!ok) {
     channel.Disconnect();
     if (channel.TryConnect())
-      ok = _TrySendMessage(WEASEL_IPC_TRAY_COMMAND, menuId, session_id,
-                           &result);
+      ok =
+          _TrySendMessage(WEASEL_IPC_TRAY_COMMAND, menuId, session_id, &result);
   }
   WeaselDebugLog(L"WeaselClient",
                  L"TrayCommandSync menuId=" + std::to_wstring(menuId) +

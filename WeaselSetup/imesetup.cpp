@@ -38,24 +38,21 @@ typedef HRESULT(WINAPI* PTF_INSTALLLAYOUTORTIP)(LPCWSTR psz, DWORD dwFlags);
   L"Reporting\\LocalDumps\\WeaselServer.exe"
 
 BOOL copy_file(const std::wstring& src, const std::wstring& dest) {
-  WeaselDebugLog(L"WeaselSetup",
-                 L"copy_file src=" + src + L" dest=" + dest);
+  WeaselDebugLog(L"WeaselSetup", L"copy_file src=" + src + L" dest=" + dest);
 
   DWORD src_attr = GetFileAttributesW(src.c_str());
   if (src_attr == INVALID_FILE_ATTRIBUTES ||
       (src_attr & FILE_ATTRIBUTE_DIRECTORY)) {
-    WeaselDebugLog(L"WeaselSetup",
-                   L"copy_file source unavailable error=" +
-                       std::to_wstring(GetLastError()));
+    WeaselDebugLog(L"WeaselSetup", L"copy_file source unavailable error=" +
+                                       std::to_wstring(GetLastError()));
     return FALSE;
   }
 
   std::wstring temp = dest + L".new";
   DeleteFileW(temp.c_str());
   if (!CopyFileW(src.c_str(), temp.c_str(), FALSE)) {
-    WeaselDebugLog(L"WeaselSetup",
-                   L"copy_file temp CopyFile failed error=" +
-                       std::to_wstring(GetLastError()));
+    WeaselDebugLog(L"WeaselSetup", L"copy_file temp CopyFile failed error=" +
+                                       std::to_wstring(GetLastError()));
     return FALSE;
   }
 
@@ -66,22 +63,19 @@ BOOL copy_file(const std::wstring& src, const std::wstring& dest) {
   }
 
   DWORD replace_error = GetLastError();
-  WeaselDebugLog(L"WeaselSetup",
-                 L"copy_file replace failed error=" +
-                     std::to_wstring(replace_error));
+  WeaselDebugLog(L"WeaselSetup", L"copy_file replace failed error=" +
+                                     std::to_wstring(replace_error));
 
   if (MoveFileExW(temp.c_str(), dest.c_str(),
                   MOVEFILE_REPLACE_EXISTING | MOVEFILE_DELAY_UNTIL_REBOOT)) {
-    WeaselDebugLog(L"WeaselSetup",
-                   L"copy_file scheduled delayed replace");
+    WeaselDebugLog(L"WeaselSetup", L"copy_file scheduled delayed replace");
     return TRUE;
   }
 
   DWORD delayed_error = GetLastError();
   DeleteFileW(temp.c_str());
-  WeaselDebugLog(L"WeaselSetup",
-                 L"copy_file delayed replace failed error=" +
-                     std::to_wstring(delayed_error));
+  WeaselDebugLog(L"WeaselSetup", L"copy_file delayed replace failed error=" +
+                                     std::to_wstring(delayed_error));
   return FALSE;
 }
 

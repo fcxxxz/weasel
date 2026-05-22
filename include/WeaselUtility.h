@@ -48,9 +48,8 @@ inline fs::path WeaselLogPath() {
 inline bool ShouldTraceKeyEvents() {
   static bool enabled = []() {
     WCHAR value[8] = {0};
-    DWORD length =
-        GetEnvironmentVariableW(L"WEASEL_TRACE_KEY_EVENTS", value,
-                                static_cast<DWORD>(_countof(value)));
+    DWORD length = GetEnvironmentVariableW(L"WEASEL_TRACE_KEY_EVENTS", value,
+                                           static_cast<DWORD>(_countof(value)));
     return length > 0 && value[0] != L'0';
   }();
   return enabled;
@@ -68,15 +67,14 @@ inline void WeaselDebugLog(const std::wstring& component,
                st.wMilliseconds, GetCurrentProcessId(), GetCurrentThreadId(),
                component.c_str());
     std::wstring line = std::wstring(prefix) + message + L"\r\n";
-    int bytes = WideCharToMultiByte(CP_UTF8, 0, line.c_str(),
-                                    static_cast<int>(line.size()), NULL, 0,
-                                    NULL, NULL);
+    int bytes =
+        WideCharToMultiByte(CP_UTF8, 0, line.c_str(),
+                            static_cast<int>(line.size()), NULL, 0, NULL, NULL);
     if (bytes <= 0)
       return;
     std::string utf8(bytes, '\0');
-    WideCharToMultiByte(CP_UTF8, 0, line.c_str(),
-                        static_cast<int>(line.size()), utf8.data(), bytes,
-                        NULL, NULL);
+    WideCharToMultiByte(CP_UTF8, 0, line.c_str(), static_cast<int>(line.size()),
+                        utf8.data(), bytes, NULL, NULL);
 
     fs::path log_file = WeaselLogPath() / L"weasel-debug.log";
     HANDLE file =

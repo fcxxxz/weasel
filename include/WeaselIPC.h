@@ -122,9 +122,9 @@ inline void MarkServiceManualExit() {
       WeaselDebugLog(L"WeaselIPC",
                      L"manual exit marked path=" + path.wstring());
     } else {
-      WeaselDebugLog(L"WeaselIPC",
-                     L"manual exit mark failed path=" + path.wstring() +
-                         L" error=" + std::to_wstring(GetLastError()));
+      WeaselDebugLog(L"WeaselIPC", L"manual exit mark failed path=" +
+                                       path.wstring() + L" error=" +
+                                       std::to_wstring(GetLastError()));
     }
   } catch (...) {
   }
@@ -135,10 +135,9 @@ inline void ClearServiceManualExit() {
     fs::path path = ServiceManualExitFlagPath();
     BOOL deleted = DeleteFileW(path.c_str());
     DWORD error = deleted ? ERROR_SUCCESS : GetLastError();
-    WeaselDebugLog(L"WeaselIPC",
-                   L"manual exit cleared path=" + path.wstring() +
-                       L" deleted=" + std::to_wstring(deleted) +
-                       L" error=" + std::to_wstring(error));
+    WeaselDebugLog(L"WeaselIPC", L"manual exit cleared path=" + path.wstring() +
+                                     L" deleted=" + std::to_wstring(deleted) +
+                                     L" error=" + std::to_wstring(error));
   } catch (...) {
   }
 }
@@ -325,7 +324,7 @@ inline bool ShouldTreatLegacyRestartAsManual(LPCWSTR command_line,
   if (parent_path.empty())
     return false;
   return IsInteractiveLegacyRestartParent(parent_name.empty() ? parent_path
-                                                             : parent_name);
+                                                              : parent_name);
 }
 
 inline bool ServiceRootFromCommandLine(const std::wstring& command_line,
@@ -338,7 +337,7 @@ inline bool ServiceRootFromCommandLine(const std::wstring& command_line,
   size_t exe_pos = std::wstring::npos;
   for (size_t i = 0; i + exe_name.size() <= command_line.size(); ++i) {
     if (!_wcsnicmp(command_line.c_str() + i, exe_name.c_str(),
-                  exe_name.size())) {
+                   exe_name.size())) {
       exe_pos = i;
       break;
     }
@@ -346,15 +345,13 @@ inline bool ServiceRootFromCommandLine(const std::wstring& command_line,
   if (exe_pos == std::wstring::npos)
     return false;
 
-  std::wstring exe_path =
-      command_line.substr(0, exe_pos + exe_name.size());
+  std::wstring exe_path = command_line.substr(0, exe_pos + exe_name.size());
   while (!exe_path.empty() && iswspace(exe_path[0]))
     exe_path.erase(0, 1);
   if (!exe_path.empty() && exe_path[0] == L'"')
     exe_path.erase(0, 1);
-  while (!exe_path.empty() &&
-         (iswspace(exe_path[exe_path.size() - 1]) ||
-          exe_path[exe_path.size() - 1] == L'"')) {
+  while (!exe_path.empty() && (iswspace(exe_path[exe_path.size() - 1]) ||
+                               exe_path[exe_path.size() - 1] == L'"')) {
     exe_path.erase(exe_path.size() - 1);
   }
 

@@ -297,9 +297,9 @@ BOOL RimeWithWeaselHandler::ProcessKeyEvent(KeyEvent keyEvent,
   _Respond(ipc_id, eat, &status_snapshot, &has_commit);
   _UpdateUI(ipc_id, &status_snapshot);
   m_active_session = ipc_id;
-  bool is_composing =
-      status_snapshot.has_status ? status_snapshot.status.composing
-                                 : was_composing;
+  bool is_composing = status_snapshot.has_status
+                          ? status_snapshot.status.composing
+                          : was_composing;
   bool should_eat =
       ShouldEatKeyEvent(handled, has_commit, was_composing, is_composing);
   if (ShouldTraceKeyEvents() && !handled && has_commit) {
@@ -617,8 +617,7 @@ void RimeWithWeaselHandler::_UpdateUI(
   }
 }
 
-void RimeWithWeaselHandler::_RefreshTrayIconIfNeeded(
-    RimeSessionId session_id) {
+void RimeWithWeaselHandler::_RefreshTrayIconIfNeeded(RimeSessionId session_id) {
   if (!m_ui)
     return;
   RimeTrayIconSignature signature =
@@ -752,8 +751,7 @@ bool RimeWithWeaselHandler::_ShowMessage(Context& ctx, Status& status) {
   std::lock_guard<std::mutex> lock(m_notifier_mutex);
   if (m_message_type.empty() || m_message_value.empty())
     return m_ui->IsCountingDown();
-  if (ShouldSuppressInlineOptionNotification(m_message_type,
-                                             m_message_value)) {
+  if (ShouldSuppressInlineOptionNotification(m_message_type, m_message_value)) {
     status.type = SCHEMA;
     return m_ui->IsCountingDown();
   }
@@ -821,11 +819,10 @@ inline std::string _GetLabelText(const std::vector<Text>& labels,
   return wtou8(std::wstring(buffer));
 }
 
-bool RimeWithWeaselHandler::_Respond(
-    WeaselSessionId ipc_id,
-    EatLine eat,
-    RimeUiStatusSnapshot* status_snapshot,
-    bool* has_commit) {
+bool RimeWithWeaselHandler::_Respond(WeaselSessionId ipc_id,
+                                     EatLine eat,
+                                     RimeUiStatusSnapshot* status_snapshot,
+                                     bool* has_commit) {
   std::wstring body;
   body.reserve(4096);
   std::vector<const char*> actions;
@@ -1561,7 +1558,8 @@ void RimeWithWeaselHandler::_ApplyStatusSnapshot(
   if (snapshot.schema_id != m_last_schema_id) {
     session_status.__synced = false;
     m_last_schema_id = snapshot.schema_id;
-    if (snapshot.schema_id != ".default") {  // don't load for schema select menu
+    if (snapshot.schema_id !=
+        ".default") {  // don't load for schema select menu
       bool inline_preedit = session_status.style.inline_preedit;
       _LoadSchemaSpecificSettings(ipc_id, snapshot.schema_id);
       _LoadAppInlinePreeditSet(ipc_id, true);

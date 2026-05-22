@@ -168,18 +168,17 @@ HWND ServerImpl::Start() {
   std::wstring instanceName = ServiceInstanceMutexName();
   HANDLE hMutexOneInstance = ::CreateMutex(NULL, FALSE, instanceName.c_str());
   DWORD mutex_error = ::GetLastError();
-  bool areYouOK =
-      (mutex_error == ERROR_ALREADY_EXISTS || mutex_error == ERROR_ACCESS_DENIED);
-  WeaselDebugLog(L"WeaselIPCServer",
-                 L"Start mutex=" + instanceName + L" handle=" +
-                     std::to_wstring(reinterpret_cast<uintptr_t>(
-                         hMutexOneInstance)) +
-                     L" error=" + std::to_wstring(mutex_error) +
-                     L" already_running=" + std::to_wstring(areYouOK));
+  bool areYouOK = (mutex_error == ERROR_ALREADY_EXISTS ||
+                   mutex_error == ERROR_ACCESS_DENIED);
+  WeaselDebugLog(
+      L"WeaselIPCServer",
+      L"Start mutex=" + instanceName + L" handle=" +
+          std::to_wstring(reinterpret_cast<uintptr_t>(hMutexOneInstance)) +
+          L" error=" + std::to_wstring(mutex_error) + L" already_running=" +
+          std::to_wstring(areYouOK));
 
   if (areYouOK) {
-    WeaselDebugLog(L"WeaselIPCServer",
-                   L"Start failed: single instance guard");
+    WeaselDebugLog(L"WeaselIPCServer", L"Start failed: single instance guard");
     return 0;  // assure single instance
   }
 
@@ -291,13 +290,14 @@ DWORD ServerImpl::OnKeyEventWithStatus(WEASEL_IPC_COMMAND uMsg,
     *channel << msg;
     return true;
   };
-  BOOL eaten = m_pRequestHandler->ProcessKeyEvent(KeyEvent(wParam), lParam, eat);
+  BOOL eaten =
+      m_pRequestHandler->ProcessKeyEvent(KeyEvent(wParam), lParam, eat);
   return MakeKeyEventResult(eaten);
 }
 
 DWORD ServerImpl::OnShutdownServer(WEASEL_IPC_COMMAND uMsg,
-                                    DWORD wParam,
-                                    DWORD lParam) {
+                                   DWORD wParam,
+                                   DWORD lParam) {
   DWORD reason = WEASEL_IPC_SHUTDOWN_REASON_EXIT;
   if (wParam == WEASEL_IPC_SHUTDOWN_REASON_RESTART)
     reason = WEASEL_IPC_SHUTDOWN_REASON_RESTART;

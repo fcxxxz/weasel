@@ -142,18 +142,17 @@ STDAPI WeaselTSF::ActivateEx(ITfThreadMgr* pThreadMgr,
   com_ptr<ITfDocumentMgr> pDocMgrFocus;
   _activateFlags = dwFlags;
 
-  WeaselDebugLog(L"WeaselTSF",
-                 L"ActivateEx start client_id=" + std::to_wstring(tfClientId) +
-                     L" flags=" + std::to_wstring(dwFlags) + L" module=" +
-                     ModuleFileName(g_hInst) + L" host=" +
-                     ModuleFileName(NULL));
+  WeaselDebugLog(L"WeaselTSF", L"ActivateEx start client_id=" +
+                                   std::to_wstring(tfClientId) + L" flags=" +
+                                   std::to_wstring(dwFlags) + L" module=" +
+                                   ModuleFileName(g_hInst) + L" host=" +
+                                   ModuleFileName(NULL));
 
   _pThreadMgr = pThreadMgr;
   _tfClientId = tfClientId;
 
   if (!_InitThreadMgrEventSink()) {
-    WeaselDebugLog(L"WeaselTSF",
-                   L"ActivateEx failed: _InitThreadMgrEventSink");
+    WeaselDebugLog(L"WeaselTSF", L"ActivateEx failed: _InitThreadMgrEventSink");
     goto ExitError;
   }
 
@@ -251,8 +250,7 @@ STDMETHODIMP WeaselTSF::OnActivated(REFCLSID clsid,
   }
 
   WeaselDebugLog(L"WeaselTSF",
-                 L"OnActivated isActivated=" +
-                     std::to_wstring(isActivated));
+                 L"OnActivated isActivated=" + std::to_wstring(isActivated));
   if (isActivated) {
     _ShowLanguageBar(TRUE);
     _UpdateLanguageBar(_status);
@@ -279,8 +277,7 @@ bool WeaselTSF::_Reconnect(bool update_tsf_status, bool wait_for_pipe) {
 
 void WeaselTSF::_RecoverServerAsync() {
   if (!weasel::ShouldAutoRecoverService()) {
-    WeaselDebugLog(L"WeaselTSF",
-                   L"skip async recovery: manual exit marked");
+    WeaselDebugLog(L"WeaselTSF", L"skip async recovery: manual exit marked");
     return;
   }
 
@@ -345,9 +342,8 @@ bool WeaselTSF::_EnsureServerConnected(bool update_tsf_status) {
         std::wstring dir = _GetRootDir();
         auto restart_server = [dir, this]() {
           if (!weasel::ShouldAutoRecoverService()) {
-            WeaselDebugLog(
-                L"WeaselTSF",
-                L"skip recovery thread launch: manual exit marked");
+            WeaselDebugLog(L"WeaselTSF",
+                           L"skip recovery thread launch: manual exit marked");
             return;
           }
           if (dir.empty())

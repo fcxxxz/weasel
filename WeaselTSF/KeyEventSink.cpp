@@ -28,12 +28,12 @@ static std::wstring KeyEventTracePrefix(const wchar_t* callback,
          L" lparam=" + std::to_wstring(static_cast<UINT32>(lParam)) +
          L" identity=" +
          std::to_wstring(weasel::KeyEventTestCache::ComparableLParam(lParam)) +
-         L" repeat=" + std::to_wstring(info.repeatCount) +
-         L" scan=" + std::to_wstring(info.scanCode) +
-         L" ext=" + std::to_wstring(info.isExtended) +
-         L" context=" + std::to_wstring(info.contextCode) +
-         L" prev=" + std::to_wstring(info.prevKeyState) +
-         L" up=" + std::to_wstring(info.isKeyUp);
+         L" repeat=" + std::to_wstring(info.repeatCount) + L" scan=" +
+         std::to_wstring(info.scanCode) + L" ext=" +
+         std::to_wstring(info.isExtended) + L" context=" +
+         std::to_wstring(info.contextCode) + L" prev=" +
+         std::to_wstring(info.prevKeyState) + L" up=" +
+         std::to_wstring(info.isKeyUp);
 }
 
 static void TraceKeyEvent(const wchar_t* callback,
@@ -42,9 +42,8 @@ static void TraceKeyEvent(const wchar_t* callback,
                           const std::wstring& message) {
   if (!ShouldTraceKeyEvents())
     return;
-  WeaselDebugLog(L"KeyEvent",
-                 KeyEventTracePrefix(callback, wParam, lParam) + L" " +
-                     message);
+  WeaselDebugLog(L"KeyEvent", KeyEventTracePrefix(callback, wParam, lParam) +
+                                  L" " + message);
 }
 
 #define TRACE_KEY_EVENT(callback, wParam, lParam, message) \
@@ -84,15 +83,13 @@ bool WeaselTSF::_TestKeyEvent(WPARAM wParam, LPARAM lParam, BOOL* pfEaten) {
       service_available, _status.ascii_mode, keyCountToSimulate != 0,
       _status.composing, shortcut_modifier, known_key, wParam);
   *pfEaten = predicted_eaten ? TRUE : FALSE;
-  TRACE_KEY_EVENT(L"Test", wParam, lParam,
-                  L"known_key=1 ascii_mode=" +
-                      std::to_wstring(_status.ascii_mode) +
-                      L" composing=" + std::to_wstring(_status.composing) +
-                      L" capslock_simulation=" +
-                      std::to_wstring(keyCountToSimulate != 0) +
-                      L" shortcut_modifier=" +
-                      std::to_wstring(shortcut_modifier) +
-                      L" predicted_eaten=" + std::to_wstring(*pfEaten));
+  TRACE_KEY_EVENT(
+      L"Test", wParam, lParam,
+      L"known_key=1 ascii_mode=" + std::to_wstring(_status.ascii_mode) +
+          L" composing=" + std::to_wstring(_status.composing) +
+          L" capslock_simulation=" + std::to_wstring(keyCountToSimulate != 0) +
+          L" shortcut_modifier=" + std::to_wstring(shortcut_modifier) +
+          L" predicted_eaten=" + std::to_wstring(*pfEaten));
   return predicted_eaten;
 }
 
@@ -233,9 +230,9 @@ STDAPI WeaselTSF::OnTestKeyDown(ITfContext* pContext,
   }
   _fTestKeyDownPending = (processed && *pfEaten) ? TRUE : FALSE;
   TRACE_KEY_EVENT(L"OnTestKeyDown", wParam, lParam,
-                  L"processed=" + std::to_wstring(processed) +
-                      L" eaten=" + std::to_wstring(*pfEaten) +
-                      L" pending=" + std::to_wstring(_fTestKeyDownPending));
+                  L"processed=" + std::to_wstring(processed) + L" eaten=" +
+                      std::to_wstring(*pfEaten) + L" pending=" +
+                      std::to_wstring(_fTestKeyDownPending));
   return S_OK;
 }
 
@@ -265,8 +262,8 @@ STDAPI WeaselTSF::OnKeyDown(ITfContext* pContext,
     _activeKeyDownGuard.Remember(wParam, lParam);
   _UpdateComposition(pContext);
   TRACE_KEY_EVENT(L"OnKeyDown", wParam, lParam,
-                  L"processed=" + std::to_wstring(processed) +
-                      L" eaten=" + std::to_wstring(*pfEaten));
+                  L"processed=" + std::to_wstring(processed) + L" eaten=" +
+                      std::to_wstring(*pfEaten));
   return S_OK;
 }
 
@@ -292,9 +289,9 @@ STDAPI WeaselTSF::OnTestKeyUp(ITfContext* pContext,
   }
   _fTestKeyUpPending = (processed && *pfEaten) ? TRUE : FALSE;
   TRACE_KEY_EVENT(L"OnTestKeyUp", wParam, lParam,
-                  L"processed=" + std::to_wstring(processed) +
-                      L" eaten=" + std::to_wstring(*pfEaten) +
-                      L" pending=" + std::to_wstring(_fTestKeyUpPending));
+                  L"processed=" + std::to_wstring(processed) + L" eaten=" +
+                      std::to_wstring(*pfEaten) + L" pending=" +
+                      std::to_wstring(_fTestKeyUpPending));
   return S_OK;
 }
 
@@ -318,8 +315,8 @@ STDAPI WeaselTSF::OnKeyUp(ITfContext* pContext,
   if (!_async_edit)
     _UpdateComposition(pContext);
   TRACE_KEY_EVENT(L"OnKeyUp", wParam, lParam,
-                  L"processed=" + std::to_wstring(processed) +
-                      L" eaten=" + std::to_wstring(*pfEaten));
+                  L"processed=" + std::to_wstring(processed) + L" eaten=" +
+                      std::to_wstring(*pfEaten));
   return S_OK;
 }
 
@@ -339,9 +336,8 @@ BOOL WeaselTSF::_InitKeyEventSink() {
 
   hr = pKeystrokeMgr->AdviseKeyEventSink(_tfClientId, (ITfKeyEventSink*)this,
                                          TRUE);
-  WeaselDebugLog(L"KeyEvent",
-                 L"InitKeyEventSink hr=" + std::to_wstring(hr) + L" host=" +
-                     CurrentHostPath());
+  WeaselDebugLog(L"KeyEvent", L"InitKeyEventSink hr=" + std::to_wstring(hr) +
+                                  L" host=" + CurrentHostPath());
 
   return (hr == S_OK);
 }

@@ -82,8 +82,7 @@ static bool QueryWeaselRoot(std::wstring& dir) {
   bool ok = QueryMachineStringValueAllViews(L"Software\\Rime\\Weasel",
                                             L"WeaselRoot", dir);
   WeaselDebugLog(L"LanguageBar",
-                 L"QueryWeaselRoot ok=" + std::to_wstring(ok) + L" dir=" +
-                     dir);
+                 L"QueryWeaselRoot ok=" + std::to_wstring(ok) + L" dir=" + dir);
   return ok;
 }
 
@@ -96,9 +95,8 @@ static bool QueryWeaselRootFromRunKey(std::wstring& dir) {
     return false;
   }
   bool ok = weasel::ServiceRootFromCommandLine(command, dir);
-  WeaselDebugLog(L"LanguageBar",
-                 L"Run key command=" + command + L" parse_ok=" +
-                     std::to_wstring(ok) + L" dir=" + dir);
+  WeaselDebugLog(L"LanguageBar", L"Run key command=" + command + L" parse_ok=" +
+                                     std::to_wstring(ok) + L" dir=" + dir);
   return ok;
 }
 
@@ -114,18 +112,16 @@ static bool QueryWeaselRootFromModule(std::wstring& dir) {
   std::wstring module_path = path;
   size_t slash = module_path.find_last_of(L"\\/");
   if (slash == std::wstring::npos) {
-    WeaselDebugLog(L"LanguageBar",
-                   L"Module root lookup failed: no directory");
+    WeaselDebugLog(L"LanguageBar", L"Module root lookup failed: no directory");
     return false;
   }
 
   std::wstring module_dir = module_path.substr(0, slash);
   std::wstring server = weasel::ServiceExecutablePath(module_dir);
   bool ok = !server.empty() && fs::exists(server);
-  WeaselDebugLog(L"LanguageBar",
-                 L"Module root lookup module=" + module_path + L" ok=" +
-                     std::to_wstring(ok) + L" dir=" + module_dir +
-                     L" server=" + server);
+  WeaselDebugLog(L"LanguageBar", L"Module root lookup module=" + module_path +
+                                     L" ok=" + std::to_wstring(ok) + L" dir=" +
+                                     module_dir + L" server=" + server);
   if (!ok)
     return false;
 
@@ -148,30 +144,29 @@ static void ShowServiceQuitFailure() {
 
 static bool StartWeaselServer(const std::wstring& dir, bool restart) {
   std::wstring server = weasel::ServiceExecutablePath(dir);
-  WeaselDebugLog(L"LanguageBar",
-                 L"StartWeaselServer restart=" + std::to_wstring(restart) +
-                     L" dir=" + dir + L" server=" + server);
+  WeaselDebugLog(L"LanguageBar", L"StartWeaselServer restart=" +
+                                     std::to_wstring(restart) + L" dir=" + dir +
+                                     L" server=" + server);
   if (server.empty()) {
     WeaselDebugLog(L"LanguageBar", L"StartWeaselServer failed: empty server");
     ShowStartServiceFailure(server);
     return false;
   }
   SetLastError(ERROR_SUCCESS);
-  HINSTANCE result = ShellExecuteW(
-      NULL, L"open", server.c_str(),
-      restart ? weasel::ServiceManualRestartArgument() : NULL, dir.c_str(),
-      SW_HIDE);
+  HINSTANCE result =
+      ShellExecuteW(NULL, L"open", server.c_str(),
+                    restart ? weasel::ServiceManualRestartArgument() : NULL,
+                    dir.c_str(), SW_HIDE);
   if ((uintptr_t)result <= 32) {
-    WeaselDebugLog(L"LanguageBar",
-                   L"ShellExecute failed result=" +
-                       std::to_wstring((uintptr_t)result) + L" last_error=" +
-                       std::to_wstring(GetLastError()));
+    WeaselDebugLog(L"LanguageBar", L"ShellExecute failed result=" +
+                                       std::to_wstring((uintptr_t)result) +
+                                       L" last_error=" +
+                                       std::to_wstring(GetLastError()));
     ShowStartServiceFailure(server);
     return false;
   }
-  WeaselDebugLog(L"LanguageBar",
-                 L"ShellExecute ok result=" +
-                     std::to_wstring((uintptr_t)result));
+  WeaselDebugLog(L"LanguageBar", L"ShellExecute ok result=" +
+                                     std::to_wstring((uintptr_t)result));
   return true;
 }
 
@@ -287,10 +282,10 @@ STDAPI CLangBarItemButton::GetTooltipString(BSTR* pbstrToolTip) {
 STDAPI CLangBarItemButton::OnClick(TfLBIClick click,
                                    POINT pt,
                                    const RECT* prcArea) {
-  WeaselDebugLog(L"LanguageBar",
-                 L"OnClick click=" + std::to_wstring(click) + L" pt=(" +
-                     std::to_wstring(pt.x) + L"," + std::to_wstring(pt.y) +
-                     L") area_null=" + std::to_wstring(prcArea == NULL));
+  WeaselDebugLog(L"LanguageBar", L"OnClick click=" + std::to_wstring(click) +
+                                     L" pt=(" + std::to_wstring(pt.x) + L"," +
+                                     std::to_wstring(pt.y) + L") area_null=" +
+                                     std::to_wstring(prcArea == NULL));
   if (click == TF_LBI_CLK_LEFT) {
     UINT wID =
         ascii_mode ? ID_WEASELTRAY_DISABLE_ASCII : ID_WEASELTRAY_ENABLE_ASCII;
@@ -316,11 +311,11 @@ STDAPI CLangBarItemButton::OnClick(TfLBIClick click,
       }
       SetLastError(ERROR_SUCCESS);
       HMENU menu = LoadMenuW(g_hInst, MAKEINTRESOURCE(menu_resource));
-      WeaselDebugLog(L"LanguageBar",
-                     L"OnClick right LoadMenu resource=" +
-                         std::to_wstring(menu_resource) + L" menu=" +
-                         HandleValue(menu) + L" last_error=" +
-                         std::to_wstring(GetLastError()));
+      WeaselDebugLog(L"LanguageBar", L"OnClick right LoadMenu resource=" +
+                                         std::to_wstring(menu_resource) +
+                                         L" menu=" + HandleValue(menu) +
+                                         L" last_error=" +
+                                         std::to_wstring(GetLastError()));
       if (menu == NULL)
         return S_OK;
       HMENU popupMenu = GetSubMenu(menu, 0);
@@ -333,9 +328,8 @@ STDAPI CLangBarItemButton::OnClick(TfLBIClick click,
       UINT wID = TrackPopupMenuEx(
           popupMenu, TPM_NONOTIFY | TPM_RETURNCMD | TPM_HORPOSANIMATION, pt.x,
           pt.y, hwnd, NULL);
-      WeaselDebugLog(L"LanguageBar",
-                     L"OnClick right TrackPopupMenuEx wID=" +
-                         std::to_wstring(wID));
+      WeaselDebugLog(L"LanguageBar", L"OnClick right TrackPopupMenuEx wID=" +
+                                         std::to_wstring(wID));
       DestroyMenu(menu);
       if (weasel::IsTrayMenuSelectionCancelled(wID)) {
         WeaselDebugLog(L"LanguageBar",
@@ -352,18 +346,16 @@ STDAPI CLangBarItemButton::OnClick(TfLBIClick click,
 }
 
 STDAPI CLangBarItemButton::InitMenu(ITfMenu* pMenu) {
-  WeaselDebugLog(L"LanguageBar",
-                 L"InitMenu pMenu=" + HandleValue(pMenu));
+  WeaselDebugLog(L"LanguageBar", L"InitMenu pMenu=" + HandleValue(pMenu));
   SetLastError(ERROR_SUCCESS);
   HMENU menu = LoadMenuW(g_hInst, MAKEINTRESOURCE(IDR_MENU_POPUP));
-  WeaselDebugLog(L"LanguageBar",
-                 L"InitMenu LoadMenu menu=" + HandleValue(menu) +
-                     L" last_error=" + std::to_wstring(GetLastError()));
+  WeaselDebugLog(L"LanguageBar", L"InitMenu LoadMenu menu=" +
+                                     HandleValue(menu) + L" last_error=" +
+                                     std::to_wstring(GetLastError()));
   if (menu == NULL)
     return E_FAIL;
   HMENU popupMenu = GetSubMenu(menu, 0);
-  WeaselDebugLog(L"LanguageBar",
-                 L"InitMenu popup=" + HandleValue(popupMenu));
+  WeaselDebugLog(L"LanguageBar", L"InitMenu popup=" + HandleValue(popupMenu));
   if (popupMenu == NULL) {
     DestroyMenu(menu);
     return E_FAIL;
@@ -374,8 +366,7 @@ STDAPI CLangBarItemButton::InitMenu(ITfMenu* pMenu) {
 }
 
 STDAPI CLangBarItemButton::OnMenuSelect(UINT wID) {
-  WeaselDebugLog(L"LanguageBar",
-                 L"OnMenuSelect wID=" + std::to_wstring(wID));
+  WeaselDebugLog(L"LanguageBar", L"OnMenuSelect wID=" + std::to_wstring(wID));
   _pTextService->_HandleLangBarMenuSelect(wID);
   return S_OK;
 }
@@ -500,9 +491,7 @@ void WeaselTSF::_HandleLangBarMenuSelect(UINT wID) {
       }
       if (!dir.empty()) {
         if (wID == ID_WEASELTRAY_RERUN_SERVICE) {
-          std::thread th([dir]() {
-            StartWeaselServer(dir, true);
-          });
+          std::thread th([dir]() { StartWeaselServer(dir, true); });
           th.detach();
         } else
           open(dir);
@@ -580,8 +569,7 @@ BOOL WeaselTSF::_InitLanguageBar() {
   WeaselDebugLog(L"LanguageBar", L"InitLanguageBar start");
   HRESULT hr = _pThreadMgr->QueryInterface(&pLangBarItemMgr);
   WeaselDebugLog(L"LanguageBar",
-                 L"InitLanguageBar QueryInterface hr=" +
-                     std::to_wstring(hr));
+                 L"InitLanguageBar QueryInterface hr=" + std::to_wstring(hr));
   if (hr != S_OK)
     return FALSE;
 

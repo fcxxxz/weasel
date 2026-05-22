@@ -56,8 +56,8 @@ class WeaselServerApp {
   }
 
  public:
-  explicit WeaselServerApp(
-      DWORD startup_notification = weasel::WEASEL_IPC_SERVICE_NOTIFICATION_NONE);
+  explicit WeaselServerApp(DWORD startup_notification =
+                               weasel::WEASEL_IPC_SERVICE_NOTIFICATION_NONE);
   ~WeaselServerApp();
   int Run();
 
