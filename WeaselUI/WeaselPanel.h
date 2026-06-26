@@ -9,7 +9,16 @@ namespace weasel {
 class WeaselPanel {
  public:
   WeaselPanel(UI& ui);
-  ~WeaselPanel() {}
+  ~WeaselPanel() {
+    if (!m_current_zhung_icon.empty())
+      DestroyIcon(m_iconEnabled);
+    if (!m_current_ascii_icon.empty())
+      DestroyIcon(m_iconAlpha);
+    if (!m_current_half_icon.empty())
+      DestroyIcon(m_iconHalf);
+    if (!m_current_full_icon.empty())
+      DestroyIcon(m_iconFull);
+  }
   void MoveTo(RECT rc);
   void Refresh();
 

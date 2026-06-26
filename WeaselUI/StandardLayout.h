@@ -75,7 +75,6 @@ class StandardLayout : public Layout {
                          int& height,
                          CRect& rect);
 
-  CSize _beforesz, _hilitedsz, _aftersz;
   TextRange _range;
   CSize _contentSize;
   CRect _preeditRect, _auxiliaryRect, _highlightRect;
