@@ -70,6 +70,7 @@ class DeviceResources {
   ComPtr<ID2D1Device1> d2Device;
   ComPtr<IDCompositionDevice> dcompDevice;
   ComPtr<IDWriteFactory2> m_pWriteFactory;
+  ComPtr<IWICImagingFactory> wicFactory;
 
  private:
   DeviceResources();
@@ -138,8 +139,7 @@ struct D2D {
   HRESULT DrawTextLayout(ComPtr<IDWriteTextLayout> pTextLayout,
                          float x,
                          float y,
-                         uint32_t color,
-                         bool shadow = false);
+                         uint32_t color);
   ComPtr<ID3D11Device> direct3dDevice;
   ComPtr<IDXGIDevice> dxgiDevice;
   ComPtr<IDXGIFactory2> dxFactory;
