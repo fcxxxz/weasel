@@ -412,14 +412,6 @@ INT_PTR FontSettingDialog::OnChangeFontPoint() {
 
 void FontSettingDialog::OnChangeFontFaceEdit() {
   *m_font_face_ptr = GetTextOfEdit(m_hEditFontFace);
-  wstring curfont = L"";
-  if (m_font_face_ptr == &m_label_font_face) {
-    curfont = L"label_font_face";
-  } else if (m_font_face_ptr == &m_comment_font_face) {
-    curfont = L"comment_font_face";
-  } else if (m_font_face_ptr == &m_font_face) {
-    curfont = L"font_face";
-  }
   UpdatePreview();
 }
 
