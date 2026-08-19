@@ -33,24 +33,24 @@ class CDialogDpiAware : public CDialogImpl<T> {
         },
         reinterpret_cast<LPARAM>(this));
 
-    UINT newDpi = GetWindowDpi();
-    if (newDpi != 96) {
-      float scaleFactor = (float)newDpi / (float)96.0f;
-      int width = (m_rect.right - m_rect.left) * scaleFactor;
-      int height = (m_rect.bottom - m_rect.top) * scaleFactor;
-      SetWindowPos(nullptr, m_rect.left, m_rect.top, width, height,
-                   SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOREDRAW);
-      ScaleControlsAndFonts(newDpi);
-      Invalidate();
+    m_initialDpi = GetWindowDpi();
+    m_currentDpi = m_initialDpi;
+
+    HFONT font = (HFONT)::SendMessage(m_hWnd, WM_GETFONT, 0, 0);
+    if (font != nullptr) {
+      m_hasOriginalFont =
+          GetObject(font, sizeof(m_originalFont), &m_originalFont) != 0;
     }
-    m_currentDpi = newDpi;
   }
 
  protected:
   UINT m_currentDpi = 96;
+  UINT m_initialDpi = 96;
   RECT m_rect;
   std::unordered_map<HWND, RECT> m_controlOriginalRects;
   HFONT m_currentFont = nullptr;
+  LOGFONT m_originalFont = {};
+  bool m_hasOriginalFont = false;
   UINT GetWindowDpi() {
     HMONITOR hMonitor = MonitorFromWindow(m_hWnd, MONITOR_DEFAULTTONEAREST);
     UINT dpiX = 96, dpiY = 96;
@@ -63,7 +63,8 @@ class CDialogDpiAware : public CDialogImpl<T> {
     return 96;
   }
   void ScaleControlsAndFonts(UINT newDpi) {
-    const float scaleFactor = static_cast<float>(newDpi) / 96;
+    const float scaleFactor =
+        static_cast<float>(newDpi) / static_cast<float>(m_initialDpi);
     for (const auto& [hWnd, originalRect] : m_controlOriginalRects) {
       int newX = static_cast<int>(originalRect.left * scaleFactor);
       int newY = static_cast<int>(originalRect.top * scaleFactor);
@@ -74,11 +75,10 @@ class CDialogDpiAware : public CDialogImpl<T> {
       ::SetWindowPos(hWnd, nullptr, newX, newY, newWidth, newHeight,
                      SWP_NOZORDER | SWP_NOACTIVATE);
     }
-    HFONT oldFont = (HFONT)::SendMessage(m_hWnd, WM_GETFONT, 0, 0);
-    LOGFONT lf;
-    if (!GetObject(oldFont, sizeof(lf), &lf)) {
+    if (!m_hasOriginalFont) {
       return;
     }
+    LOGFONT lf = m_originalFont;
     lf.lfHeight = static_cast<int>(lf.lfHeight * scaleFactor);
     HFONT hNewFont = CreateFontIndirect(&lf);
     if (m_currentFont) {
