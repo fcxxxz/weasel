@@ -330,11 +330,28 @@ inline std::string current_time() {
   return oss.str();
 }
 
+// OutputDebugString logging is skipped entirely unless a debugger is attached
+// or WEASEL_ODS_LOG is set: building the timestamped stream on every keystroke
+// (RimeWithWeasel logs each key event) is measurable overhead when no one is
+// listening.
+inline bool WeaselOdsLogEnabled() {
+  static const bool enabled_by_env = []() {
+    WCHAR value[8] = {0};
+    DWORD length = GetEnvironmentVariableW(L"WEASEL_ODS_LOG", value,
+                                           static_cast<DWORD>(_countof(value)));
+    return length > 0 && value[0] != L'0';
+  }();
+  return enabled_by_env || IsDebuggerPresent() != FALSE;
+}
+
 #define DEBUG                                                       \
   (DebugStream() << "[" << current_time() << " " << __FILE__ << ":" \
                  << __LINE__ << "] ")
 
-#define LOG(x) DEBUG << #x << ": "
+#define LOG(x)                                                       \
+  for (bool weasel_log_once = WeaselOdsLogEnabled(); weasel_log_once; \
+       weasel_log_once = false)                                      \
+  DEBUG << #x << ": "
 #define DLOG(x) LOG(x)
 
 using wstring = std::wstring;
