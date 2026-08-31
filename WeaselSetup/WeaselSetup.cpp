@@ -110,7 +110,7 @@ static int CustomInstall(bool installing) {
                  L"CustomInstall installing=" + std::to_wstring(installing) +
                      L" has_installed=" + std::to_wstring(_has_installed) +
                      L" silent=" + std::to_wstring(silent));
-  if (!_has_installed)
+  if (installing || !_has_installed)
     if (0 != install(profile, silent))
       return 1;
 

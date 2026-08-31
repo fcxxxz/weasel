@@ -49,16 +49,33 @@ bool PipeChannelBase::_Ensure() {
   return true;
 }
 
+bool PipeChannelBase::_EnsureOnce() {
+  try {
+    HANDLE* phandle = _GetPipeHandle();
+    if (_Invalid(*phandle)) {
+      HANDLE pipe = _TryConnect();
+      if (_Invalid(pipe))
+        return false;
+      DWORD mode = PIPE_READMODE_MESSAGE;
+      if (!SetNamedPipeHandleState(pipe, &mode, NULL, NULL)) {
+        _FinalizePipe(pipe);
+        return false;
+      }
+      *phandle = pipe;
+    }
+  } catch (...) {
+    return false;
+  }
+  return true;
+}
+
 HANDLE PipeChannelBase::_Connect() {
-  // fail fast when all instances are busy: this runs on the host app's UI
-  // thread, which must never wait for the server
   HANDLE pipe = _TryConnect();
   if (_Invalid(pipe))
     _ThrowCode(static_cast<DWORD>(ERROR_PIPE_BUSY));
   DWORD mode = PIPE_READMODE_MESSAGE;
-  if (!SetNamedPipeHandleState(pipe, &mode, NULL, NULL)) {
+  if (!SetNamedPipeHandleState(pipe, &mode, NULL, NULL))
     _ThrowLastError;
-  }
   return pipe;
 }
 

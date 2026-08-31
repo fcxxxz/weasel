@@ -265,7 +265,7 @@ STDMETHODIMP WeaselTSF::OnActivated(REFCLSID clsid,
   WeaselDebugLog(L"WeaselTSF",
                  L"OnActivated isActivated=" + std::to_wstring(isActivated));
   if (isActivated) {
-    _ShowLanguageBar(TRUE);
+    _ShowLanguageBar(!_config.hide_ime_mode_icon);
     _UpdateLanguageBar(_status);
   } else {
     _DeleteCandidateList();

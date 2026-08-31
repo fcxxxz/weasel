@@ -335,13 +335,13 @@ inline std::string current_time() {
 // (RimeWithWeasel logs each key event) is measurable overhead when no one is
 // listening.
 inline bool WeaselOdsLogEnabled() {
-  static const bool enabled_by_env = []() {
+  static const bool enabled = []() {
     WCHAR value[8] = {0};
     DWORD length = GetEnvironmentVariableW(L"WEASEL_ODS_LOG", value,
                                            static_cast<DWORD>(_countof(value)));
-    return length > 0 && value[0] != L'0';
+    return (length > 0 && value[0] != L'0') || IsDebuggerPresent() != FALSE;
   }();
-  return enabled_by_env || IsDebuggerPresent() != FALSE;
+  return enabled;
 }
 
 #define DEBUG                                                       \

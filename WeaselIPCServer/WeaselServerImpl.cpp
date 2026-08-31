@@ -120,9 +120,15 @@ LRESULT ServerImpl::OnServiceNotifyMessage(UINT uMsg,
                                            WPARAM wParam,
                                            LPARAM lParam,
                                            BOOL& bHandled) {
-  std::lock_guard guard(g_api_mutex);
-  if (m_pRequestHandler)
-    m_pRequestHandler->NotifyService(static_cast<DWORD>(wParam));
+  {
+    std::lock_guard guard(g_api_mutex);
+    if (m_pRequestHandler)
+      m_pRequestHandler->NotifyService(static_cast<DWORD>(wParam));
+  }
+  // Keep tray refresh outside g_api_mutex; this callback is dispatched on the
+  // server window thread and must not wait on the pipe worker.
+  if (m_trayRefreshCallback)
+    m_trayRefreshCallback();
   return 0;
 }
 
@@ -153,19 +159,6 @@ LRESULT ServerImpl::OnCommand(UINT uMsg,
     return 0;
   }
   it->second();  // execute command
-  return 0;
-}
-
-LRESULT ServerImpl::OnServiceNotifyMessage(UINT uMsg,
-                                           WPARAM wParam,
-                                           LPARAM lParam,
-                                           BOOL& bHandled) {
-  // Runs on the server message thread, NOT on a pipe worker thread and
-  // without holding g_api_mutex, so that Shell_NotifyIcon inside the tray
-  // update can never deadlock against the taskbar UI thread.
-  if (m_trayRefreshCallback) {
-    m_trayRefreshCallback();
-  }
   return 0;
 }
 

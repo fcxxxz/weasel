@@ -35,6 +35,8 @@ class PipeChannelBase {
  protected:
   /* To ensure connection before operation */
   bool _Ensure();
+  /* Try to connect once without waiting for a pipe instance. */
+  bool _EnsureOnce();
   /* Connect pipe as client, failing fast when the server is busy */
   HANDLE _Connect();
   /* To reconnect message pipe */
@@ -112,6 +114,7 @@ class PipeChannel : public PipeChannelBase {
   /* Common pipe operations */
 
   bool Connect() { return _Ensure(); }
+  bool TryConnect() { return _EnsureOnce(); }
   bool Connected() const {
     HANDLE* phandle = _GetPipeHandle();
     return !_Invalid(*phandle);
@@ -141,6 +144,27 @@ class PipeChannel : public PipeChannelBase {
     HANDLE* phandle = _GetPipeHandle();
     _Send(*phandle, msg, timeout_ms);
     return _ReceiveResponse(timeout_ms);
+  }
+
+  // Best-effort transaction for UI-adjacent notifications. It never waits for
+  // a busy server and drops the request if the bounded I/O cannot complete.
+  bool TryTransact(Msg& msg, _TyRes* result) {
+    if (!result)
+      return false;
+    HANDLE* phandle = _GetPipeHandle();
+    if (_Invalid(*phandle) && !_EnsureOnce()) {
+      ClearBufferStream();
+      return false;
+    }
+    try {
+      _Send(*phandle, msg, kClientFocusTimeoutMs);
+      *result = _ReceiveResponse(kClientFocusTimeoutMs);
+      return true;
+    } catch (...) {
+      _FinalizePipe(*phandle);
+      ClearBufferStream();
+      return false;
+    }
   }
 
   void ClearBufferStream() {

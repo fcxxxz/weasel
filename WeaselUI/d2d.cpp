@@ -131,7 +131,12 @@ void D2D::ReleaseWindowResources() {
 }
 
 D2D::D2D(UIStyle& style)
-    : m_style(style), m_hWnd(nullptr), m_dpiX(96.0f), m_dpiY(96.0f) {
+    : m_style(style),
+      m_hWnd(nullptr),
+      m_dpiX(96.0f),
+      m_dpiY(96.0f),
+      m_dpiScaleFontPoint(96.0f / 72.0f),
+      m_dpiScaleLayout(1.0f) {
   // Prepare shared device resources early so formats can be built before window
   DeviceResources::Get().EnsureInitialized();
   // initialize dpi scales even without window (defaults to 96 DPI)
