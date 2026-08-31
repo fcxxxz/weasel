@@ -249,4 +249,4 @@ class WeaselTSF : public ITfTextInputProcessorEx,
   BOOL _isToOpenClose = false;
   std::atomic_uint _serverRecoveryRetry{0};
   volatile LONG _recoveringServer = 0;
-};
+  BOOL _updatingLanguageBar = false;};

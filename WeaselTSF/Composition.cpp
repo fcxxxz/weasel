@@ -42,6 +42,16 @@ STDMETHODIMP CStartCompositionEditSession::DoEditSession(TfEditCookie ec) {
       (pComposition != NULL)) {
     _pTextService->_SetComposition(pComposition);
 
+    /* WORKAROUND:
+     *   CUAS does not provide a correct GetTextExt() position unless the
+     * composition is filled with characters. So we insert a zero width space
+     * here. The workaround is only needed when inline preedit is not enabled.
+     *   See https://github.com/rime/weasel/pull/883#issuecomment-1567625762
+     */
+    if (_fCUASWorkaroundEnabled && !_inlinePreeditEnabled) {
+      pRangeComposition->SetText(ec, TF_ST_CORRECTION, L"\u2060", 1);
+    }
+
     /* set selection */
     TF_SELECTION tfSelection;
     pRangeComposition->Collapse(ec, TF_ANCHOR_END);
