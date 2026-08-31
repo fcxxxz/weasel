@@ -48,7 +48,7 @@ STDMETHODIMP CStartCompositionEditSession::DoEditSession(TfEditCookie ec) {
      * here. The workaround is only needed when inline preedit is not enabled.
      *   See https://github.com/rime/weasel/pull/883#issuecomment-1567625762
      */
-    if (_fCUASWorkaroundEnabled && !_inlinePreeditEnabled) {
+    if (_fCUASWorkaroundEnabled) {
       pRangeComposition->SetText(ec, TF_ST_CORRECTION, L"\u2060", 1);
     }
 
