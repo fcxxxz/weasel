@@ -508,7 +508,6 @@ int client_main() {
   }
   client.EndSession();
 
-  system("pause");
   return 0;
 }
 
@@ -520,24 +519,26 @@ class TestRequestHandler : public weasel::RequestHandler {
   virtual ~TestRequestHandler() {
     std::cerr << "handler dtor: " << m_counter << std::endl;
   }
-  virtual UINT FindSession(UINT session_id) {
-    std::cerr << "FindSession: " << session_id << std::endl;
-    return (session_id <= m_counter ? session_id : 0);
+  // Signatures must match RequestHandler exactly; UINT != WeaselSessionId
+  // (unsigned long) on MSVC, and a silent non-override makes the base no-ops
+  // answer every request with 0. `override` keeps this from regressing again.
+  DWORD FindSession(WeaselSessionId ipc_id) override {
+    std::cerr << "FindSession: " << ipc_id << std::endl;
+    return (ipc_id <= m_counter ? ipc_id : 0);
   }
-  virtual UINT AddSession(LPWSTR buffer) {
+  DWORD AddSession(LPWSTR buffer, EatLine eat = 0) override {
     std::cerr << "AddSession: " << m_counter + 1 << std::endl;
     return ++m_counter;
   }
-  virtual UINT RemoveSession(UINT session_id) {
-    std::cerr << "RemoveClient: " << session_id << std::endl;
+  DWORD RemoveSession(WeaselSessionId ipc_id) override {
+    std::cerr << "RemoveClient: " << ipc_id << std::endl;
     return 0;
   }
-  virtual BOOL ProcessKeyEvent(weasel::KeyEvent keyEvent,
-                               UINT session_id,
-                               EatLine eat) {
-    std::cerr << "ProcessKeyEvent: " << session_id
-              << " keycode: " << keyEvent.keycode << " mask: " << keyEvent.mask
-              << std::endl;
+  BOOL ProcessKeyEvent(weasel::KeyEvent keyEvent,
+                       WeaselSessionId ipc_id,
+                       EatLine eat) override {
+    std::cerr << "ProcessKeyEvent: " << ipc_id << " keycode: " << keyEvent.keycode
+              << " mask: " << keyEvent.mask << std::endl;
     eat(std::wstring(L"Greeting=Hello, 小狼毫.\n"));
     return TRUE;
   }

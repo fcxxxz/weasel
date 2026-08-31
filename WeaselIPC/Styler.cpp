@@ -15,9 +15,8 @@ void Styler::Store(weasel::Deserializer::KeyType const& key,
 
   UIStyle& sty = *m_pTarget->p_style;
   std::wstringstream ss(value);
-  boost::archive::text_wiarchive ia(ss);
 
-  TryDeserialize(ia, sty);
+  TryDeserialize(ss, sty);
 }
 
 weasel::Deserializer::Ptr Styler::Create(weasel::ResponseParser* pTarget) {

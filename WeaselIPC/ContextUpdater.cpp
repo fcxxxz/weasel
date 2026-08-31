@@ -59,7 +59,10 @@ void ContextUpdater::_StoreText(Text& target,
       attr.type = HIGHLIGHTED;
       attr.range.start = _wtoi(vec[0].c_str());
       attr.range.end = _wtoi(vec[1].c_str());
-      attr.range.cursor = _wtoi(vec[2].c_str());
+      // The cursor field is optional on the wire; an out-of-range read here
+      // corrupted the heap intermittently. Match TextRange's default.
+      attr.range.cursor =
+          vec.size() > 2 ? _wtoi(vec[2].c_str()) : attr.range.cursor;
 
       target.attributes.push_back(attr);
       return;
@@ -71,9 +74,8 @@ void ContextUpdater::_StoreCand(Deserializer::KeyType k,
                                 std::wstring const& value) {
   CandidateInfo& cinfo = m_pTarget->p_context->cinfo;
   std::wstringstream ss(value);
-  boost::archive::text_wiarchive ia(ss);
 
-  TryDeserialize(ia, cinfo);
+  TryDeserialize(ss, cinfo);
 
   for (auto& cand : cinfo.candies)
     cand.str = unescape_string(cand.str);

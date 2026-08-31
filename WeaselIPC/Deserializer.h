@@ -5,13 +5,23 @@
 namespace weasel {
 
 template <typename T>
-void TryDeserialize(boost::archive::text_wiarchive& ia, T& t) {
+void TryDeserialize(std::wstringstream& ss, T& t) {
   try {
+    // The archive constructor itself reads and validates the signature, so
+    // it must stay inside the guard: a malformed payload would otherwise
+    // escape as an uncaught exception and abort the host process.
+    boost::archive::text_wiarchive ia(ss);
     ia >> t;
-  } catch (const boost::archive::archive_exception& e) {
-    const std::string msg =
-        std::string("boost::archive::archive_exception: ") + e.what();
-    MessageBoxA(NULL, msg.c_str(), "IPC exception", MB_OK | MB_ICONERROR);
+  } catch (...) {
+    // A malformed or truncated payload must neither crash the host process
+    // with an escaped exception (e.g. bad_alloc from a garbage element count)
+    // nor block its UI thread on a modal message box. Reset the target so
+    // partially deserialized data is never consumed as valid state.
+    try {
+      t = T();
+    } catch (...) {
+    }
+    OutputDebugStringA("weasel: IPC payload deserialization failed\n");
   }
 }
 class Deserializer {
