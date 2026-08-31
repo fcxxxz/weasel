@@ -44,12 +44,32 @@
 #define IDC_HOTKEYS                     1003
 #define IDC_COLOR_SCHEME                1004
 #define IDC_SELECT_FONT                 1005
-#define IDC_PREVIEW                     1006
 #define IDC_USER_DICT_LIST              1007
+#define IDC_COLOR_LIST                  1012
+#define IDC_COLOR_VALUE                 1013
+#define IDC_SET_COLOR                   1014
 #define IDC_BACKUP                      1008
 #define IDC_RESTORE                     1009
 #define IDC_EXPORT                      1010
 #define IDC_IMPORT                      1011
+#define IDC_STYLE_LIST                  1015
+#define IDC_STYLE_VALUE_COMBO           1016
+#define IDC_STYLE_VALUE_EDIT            1017
+#define IDC_SET_STYLE                   1018
+
+#define IDD_DIALOG_FONT          1999
+#define IDC_CBB_FONTPICKER       2000
+#define IDC_CKB_RANGEEN          2001
+#define IDC_EDIT_RANGESTART      2002
+#define IDC_EDIT_RANGEEND        2003
+#define IDC_BTN_ADDFONT          2004
+#define IDC_CBB_FONTFACE_NAME    2005
+#define IDC_EDIT_FONTFACE        2006
+#define IDC_CBB_FONTSTYLE        2007
+#define IDC_CBB_FONTWEIGHT       2008
+#define IDC_EDIT_PREVIEW_TEXT    2009
+#define IDC_CBB_FONTPOINT        2010
+#define IDC_STATIC_PREVIEW       2011
 #define IDC_STATIC1                     -1
 
 // Next default values for new objects
@@ -59,7 +79,7 @@
 #define _APS_NO_MFC                     1
 #define _APS_NEXT_RESOURCE_VALUE        135
 #define _APS_NEXT_COMMAND_VALUE         32771
-#define _APS_NEXT_CONTROL_VALUE         1012
+#define _APS_NEXT_CONTROL_VALUE         1019
 #define _APS_NEXT_SYMED_VALUE           110
 #endif
 #endif

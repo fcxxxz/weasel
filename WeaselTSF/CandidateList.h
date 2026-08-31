@@ -85,7 +85,9 @@ class CCandidateList : public ITfIntegratableCandidateListUIElement,
       STYLE_ACTIVE_SELECTION;
 
   BOOL _pbShow;
+  bool _uiStarted = false;
   weasel::UIStyle _style;
+  bool _ui_warmed_up = false;
 
   com_ptr<ITfContext> _pContextDocument;
 };

@@ -36,8 +36,8 @@ jobs:
     needs: lint
     runs-on: windows-2022
     env:
-      boost_version: 1.84.0
-      BOOST_ROOT: ${{ github.workspace }}\deps\boost_1_84_0
+      boost_version: 1.90.0
+      BOOST_ROOT: ${{ github.workspace }}\deps\boost_1_90_0
       SDKVER: 10.0.19041.0
     strategy:
       matrix:
@@ -50,7 +50,9 @@ jobs:
           fetch-depth: 0
 
       - name: Fetch all tags
-        run: git fetch --tags
+        run: |
+          git remote add rime https://github.com/rime/weasel.git
+          git fetch rime --tags -f
 
       - name: Configure build environment
         shell: bash
@@ -64,7 +66,7 @@ jobs:
         with:
           path: |
             ${{ env.BOOST_ROOT }}
-          key: ${{ runner.os }}-boost-${{ env.boost_version }}
+          key: ${{ runner.os }}-boost-${{ env.boost_version }}-pb
 
       - name: Install Boost
         if: steps.cache-boost.outputs.cache-hit != 'true'
@@ -169,13 +171,13 @@ jobs:
         run: .\extract_changelog.ps1
 
       - name: Create Nightly release
-        if: ${{ github.repository == 'rime/weasel' && github.ref == 'refs/heads/master' && matrix.variant == 'msbuild' }}
+        if: ${{ github.repository == 'fxliang/weasel' && github.ref == 'refs/heads/pb' && matrix.variant == 'msbuild' }}
         uses: 'marvinpinto/action-automatic-releases@latest'
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
-          automatic_release_tag: latest
+          automatic_release_tag: pblatest
           prerelease: true
-          title: "Nightly Build"
+          title: "Personal Build"
           files: |
             ./output/archives/weasel*.exe
             ./output/archives/debug_symbols.7z

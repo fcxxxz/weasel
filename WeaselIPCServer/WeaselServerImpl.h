@@ -99,6 +99,9 @@ class ServerImpl : public CWindowImpl<ServerImpl, CWindow, ServerWinTraits>
   void AddMenuHandler(UINT uID, CommandHandler& handler) {
     m_MenuHandlers[uID] = handler;
   }
+  void SetTrayRefreshCallback(std::function<void()> callback) {
+    m_trayRefreshCallback = callback;
+  }
 
  private:
   void _Finailize();
@@ -111,6 +114,7 @@ class ServerImpl : public CWindowImpl<ServerImpl, CWindow, ServerWinTraits>
   std::unique_ptr<boost::thread> pipeThread;
   RequestHandler* m_pRequestHandler;  // reference
   std::map<UINT, CommandHandler> m_MenuHandlers;
+  std::function<void()> m_trayRefreshCallback;
   HMODULE m_hUser32Module;
   SecurityAttribute sa;
   BOOL m_darkMode;

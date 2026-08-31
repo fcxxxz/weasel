@@ -39,13 +39,14 @@ int WeaselServerApp::Run() {
   m_ui.Create(m_server.GetHWnd());
 
   m_handler->Initialize();
-  m_handler->OnUpdateUI([this]() { tray_icon.Refresh(); });
+  m_handler->OnUpdateUI([this]() { tray_icon.RequestRefresh(); });
 
   tray_icon.Create(m_server.GetHWnd());
+  m_server.SetTrayRefreshCallback([this]() { tray_icon.ApplyRefresh(); });
   m_handler->OnServiceNotification([this](DWORD notification) {
     tray_icon.ShowServiceNotification(notification);
   });
-  tray_icon.Refresh();
+  tray_icon.RequestRefresh();
   tray_icon.ShowServiceNotification(m_startup_notification);
   WeaselDebugLog(L"WeaselServerApp", L"tray initialized");
 
@@ -53,6 +54,7 @@ int WeaselServerApp::Run() {
   WeaselDebugLog(L"WeaselServerApp",
                  L"m_server.Run returned " + std::to_wstring(ret));
 
+  tray_icon.DisableRefresh();
   m_handler->Finalize();
   m_ui.Destroy();
   tray_icon.RemoveIcon();

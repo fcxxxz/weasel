@@ -113,11 +113,14 @@ class WeaselTSF : public ITfTextInputProcessorEx,
   /* Composition */
   void _StartComposition(com_ptr<ITfContext> pContext,
                          BOOL fCUASWorkaroundEnabled);
-  void _EndComposition(com_ptr<ITfContext> pContext, BOOL clear);
+  void _EndComposition(com_ptr<ITfContext> pContext,
+                       BOOL clear,
+                       BOOL endUI = TRUE);
   BOOL _ShowInlinePreedit(com_ptr<ITfContext> pContext,
                           const std::shared_ptr<weasel::Context> context);
   void _UpdateComposition(com_ptr<ITfContext> pContext);
   BOOL _IsComposing();
+  BOOL _IsCurrentComposition(ITfComposition* pComposition);
   void _SetComposition(com_ptr<ITfComposition> pComposition);
   void _SetCompositionPosition(const RECT& rc);
   BOOL _UpdateCompositionWindow(com_ptr<ITfContext> pContext);
@@ -237,6 +240,7 @@ class WeaselTSF : public ITfTextInputProcessorEx,
 
   /* IME status */
   weasel::Status _status;
+  weasel::Config _config;
 
   // guidatom for the display attibute.
   TfGuidAtom _gaDisplayAttributeInput;

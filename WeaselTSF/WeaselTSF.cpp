@@ -53,7 +53,7 @@ WeaselTSF::~WeaselTSF() {
   DllRelease();
 }
 
-STDAPI WeaselTSF::QueryInterface(REFIID riid, void** ppvObject) {
+STDMETHODIMP WeaselTSF::QueryInterface(REFIID riid, void** ppvObject) {
   if (ppvObject == NULL)
     return E_INVALIDARG;
 
@@ -88,11 +88,11 @@ STDAPI WeaselTSF::QueryInterface(REFIID riid, void** ppvObject) {
   return E_NOINTERFACE;
 }
 
-STDAPI_(ULONG) WeaselTSF::AddRef() {
+STDMETHODIMP_(ULONG) WeaselTSF::AddRef() {
   return InterlockedIncrement(&_cRef);
 }
 
-STDAPI_(ULONG) WeaselTSF::Release() {
+STDMETHODIMP_(ULONG) WeaselTSF::Release() {
   LONG cr = InterlockedDecrement(&_cRef);
 
   assert(cr >= 0);
@@ -103,13 +103,14 @@ STDAPI_(ULONG) WeaselTSF::Release() {
   return cr;
 }
 
-STDAPI WeaselTSF::Activate(ITfThreadMgr* pThreadMgr, TfClientId tfClientId) {
+STDMETHODIMP WeaselTSF::Activate(ITfThreadMgr* pThreadMgr,
+                                 TfClientId tfClientId) {
   WeaselDebugLog(L"WeaselTSF",
                  L"Activate client_id=" + std::to_wstring(tfClientId));
   return ActivateEx(pThreadMgr, tfClientId, 0U);
 }
 
-STDAPI WeaselTSF::Deactivate() {
+STDMETHODIMP WeaselTSF::Deactivate() {
   WeaselDebugLog(L"WeaselTSF", L"Deactivate start");
   m_client.EndSession();
 
@@ -136,9 +137,18 @@ STDAPI WeaselTSF::Deactivate() {
   return S_OK;
 }
 
-STDAPI WeaselTSF::ActivateEx(ITfThreadMgr* pThreadMgr,
-                             TfClientId tfClientId,
-                             DWORD dwFlags) {
+static void fake_key() {
+  INPUT inputs[2];
+  inputs[0].type = INPUT_KEYBOARD;
+  inputs[0].ki = {VK_SELECT, 0, 0, 0, 0};
+  inputs[1].type = INPUT_KEYBOARD;
+  inputs[1].ki = {VK_SELECT, 0, KEYEVENTF_KEYUP, 0, 0};
+  ::SendInput(sizeof(inputs) / sizeof(INPUT), inputs, sizeof(INPUT));
+}
+
+STDMETHODIMP WeaselTSF::ActivateEx(ITfThreadMgr* pThreadMgr,
+                                   TfClientId tfClientId,
+                                   DWORD dwFlags) {
   com_ptr<ITfDocumentMgr> pDocMgrFocus;
   _activateFlags = dwFlags;
 
@@ -177,6 +187,7 @@ STDAPI WeaselTSF::ActivateEx(ITfThreadMgr* pThreadMgr,
     goto ExitError;
   }
 
+  fake_key();
   if (!_InitLanguageBar()) {
     WeaselDebugLog(L"WeaselTSF", L"ActivateEx failed: _InitLanguageBar");
     goto ExitError;
@@ -213,10 +224,12 @@ STDMETHODIMP WeaselTSF::OnSetThreadFocus() {
   if (_EnsureServerConnected()) {
     bool eaten = false;
     m_client.ProcessKeyEvent(0, &eaten);
-    weasel::ResponseParser parser(NULL, NULL, &_status, NULL, &_cand->style());
+    weasel::ResponseParser parser(NULL, NULL, &_status, &_config,
+                                  &_cand->style());
     bool ok = m_client.GetResponseData(std::ref(parser));
     if (ok)
       _UpdateLanguageBar(_status);
+    _ShowLanguageBar(!_config.hide_ime_mode_icon);
   }
   return S_OK;
 }

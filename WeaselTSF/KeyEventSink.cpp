@@ -185,7 +185,7 @@ void WeaselTSF::_ResetKeyEventTestCacheIfNeeded() {
   _keyEventTestCacheReset.Apply(_keyEventTestCache);
 }
 
-STDAPI WeaselTSF::OnSetFocus(BOOL fForeground) {
+STDMETHODIMP WeaselTSF::OnSetFocus(BOOL fForeground) {
   if (fForeground)
     m_client.FocusIn();
   else {
@@ -208,10 +208,10 @@ STDAPI WeaselTSF::OnSetFocus(BOOL fForeground) {
  * twice.
  */
 
-STDAPI WeaselTSF::OnTestKeyDown(ITfContext* pContext,
-                                WPARAM wParam,
-                                LPARAM lParam,
-                                BOOL* pfEaten) {
+STDMETHODIMP WeaselTSF::OnTestKeyDown(ITfContext* pContext,
+                                      WPARAM wParam,
+                                      LPARAM lParam,
+                                      BOOL* pfEaten) {
   _ResetKeyEventTestCacheIfNeeded();
   _fTestKeyUpPending = FALSE;
   _keyEventTestCache.Remove(true, wParam, lParam);
@@ -236,10 +236,10 @@ STDAPI WeaselTSF::OnTestKeyDown(ITfContext* pContext,
   return S_OK;
 }
 
-STDAPI WeaselTSF::OnKeyDown(ITfContext* pContext,
-                            WPARAM wParam,
-                            LPARAM lParam,
-                            BOOL* pfEaten) {
+STDMETHODIMP WeaselTSF::OnKeyDown(ITfContext* pContext,
+                                  WPARAM wParam,
+                                  LPARAM lParam,
+                                  BOOL* pfEaten) {
   _ResetKeyEventTestCacheIfNeeded();
   _fTestKeyUpPending = FALSE;
   _fTestKeyDownPending = FALSE;
@@ -267,10 +267,10 @@ STDAPI WeaselTSF::OnKeyDown(ITfContext* pContext,
   return S_OK;
 }
 
-STDAPI WeaselTSF::OnTestKeyUp(ITfContext* pContext,
-                              WPARAM wParam,
-                              LPARAM lParam,
-                              BOOL* pfEaten) {
+STDMETHODIMP WeaselTSF::OnTestKeyUp(ITfContext* pContext,
+                                    WPARAM wParam,
+                                    LPARAM lParam,
+                                    BOOL* pfEaten) {
   _ResetKeyEventTestCacheIfNeeded();
   _fTestKeyDownPending = FALSE;
   _keyEventTestCache.Remove(false, wParam, lParam);
@@ -295,10 +295,10 @@ STDAPI WeaselTSF::OnTestKeyUp(ITfContext* pContext,
   return S_OK;
 }
 
-STDAPI WeaselTSF::OnKeyUp(ITfContext* pContext,
-                          WPARAM wParam,
-                          LPARAM lParam,
-                          BOOL* pfEaten) {
+STDMETHODIMP WeaselTSF::OnKeyUp(ITfContext* pContext,
+                                WPARAM wParam,
+                                LPARAM lParam,
+                                BOOL* pfEaten) {
   _ResetKeyEventTestCacheIfNeeded();
   _fTestKeyDownPending = FALSE;
   _fTestKeyUpPending = FALSE;
@@ -320,9 +320,9 @@ STDAPI WeaselTSF::OnKeyUp(ITfContext* pContext,
   return S_OK;
 }
 
-STDAPI WeaselTSF::OnPreservedKey(ITfContext* pContext,
-                                 REFGUID rguid,
-                                 BOOL* pfEaten) {
+STDMETHODIMP WeaselTSF::OnPreservedKey(ITfContext* pContext,
+                                       REFGUID rguid,
+                                       BOOL* pfEaten) {
   *pfEaten = FALSE;
   return S_OK;
 }

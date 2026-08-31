@@ -81,6 +81,7 @@ struct CandidateInfo {
     highlighted = 0;
     is_last_page = false;
     candies.clear();
+    comments.clear();
     labels.clear();
   }
   bool empty() const { return candies.empty(); }
@@ -192,9 +193,15 @@ inline void MarkLocalCompositionAborted(Status& status) {
 
 // 用於向前端告知設置信息
 struct Config {
-  Config() : inline_preedit(false) {}
-  void reset() { inline_preedit = false; }
+  Config() : inline_preedit(false), hide_ime_mode_icon(false) {}
+  void reset() {
+    inline_preedit = false;
+    hide_ime_mode_icon = false;
+  }
+  // inline preedit switch
   bool inline_preedit;
+  // hide tsf mode icon switch
+  bool hide_ime_mode_icon;
 };
 
 struct UIStyle {
@@ -214,6 +221,7 @@ struct UIStyle {
     LAYOUT_VERTICAL_TEXT,
     LAYOUT_VERTICAL_FULLSCREEN,
     LAYOUT_HORIZONTAL_FULLSCREEN,
+    LAYOUT_VERTICAL_TEXT_FULLSCREEN,
     LAYOUT_TYPE_LAST
   };
 
@@ -250,6 +258,7 @@ struct UIStyle {
   LayoutAlignType align_type;
   bool vertical_text_left_to_right;
   bool vertical_text_with_wrap;
+  bool vertical_right_to_left;
   // layout, with key name like style/layout/...
   int min_width;
   int max_width;
@@ -324,6 +333,7 @@ struct UIStyle {
         align_type(ALIGN_BOTTOM),
         vertical_text_left_to_right(false),
         vertical_text_with_wrap(false),
+        vertical_right_to_left(false),
         min_width(0),
         max_width(0),
         min_height(0),
@@ -373,6 +383,7 @@ struct UIStyle {
         preedit_type != st.preedit_type || layout_type != st.layout_type ||
         vertical_text_left_to_right != st.vertical_text_left_to_right ||
         vertical_text_with_wrap != st.vertical_text_with_wrap ||
+        vertical_right_to_left != st.vertical_right_to_left ||
         paging_on_scroll != st.paging_on_scroll || font_face != st.font_face ||
         label_font_face != st.label_font_face ||
         comment_font_face != st.comment_font_face ||
@@ -425,7 +436,7 @@ struct UIStyle {
         hilited_comment_text_color != st.hilited_comment_text_color ||
         hilited_mark_color != st.hilited_mark_color ||
         prevpage_color != st.prevpage_color ||
-        nextpage_color != st.nextpage_color);
+        nextpage_color != st.nextpage_color || client_caps != st.client_caps);
   }
 };
 }  // namespace weasel
@@ -459,6 +470,7 @@ void serialize(Archive& ar, weasel::UIStyle& s, const unsigned int version) {
   ar & s.layout_type;
   ar & s.vertical_text_left_to_right;
   ar & s.vertical_text_with_wrap;
+  ar & s.vertical_right_to_left;
   ar & s.paging_on_scroll;
   ar & s.min_width;
   ar & s.max_width;
@@ -536,6 +548,11 @@ void serialize(Archive& ar, weasel::TextRange& s, const unsigned int version) {
   ar & s.start;
   ar & s.end;
   ar & s.cursor;
+}
+template <typename Archive>
+void serialize(Archive& ar, weasel::Config& s, const unsigned int version) {
+  ar & s.inline_preedit;
+  ar & s.hide_ime_mode_icon;
 }
 }  // namespace serialization
 }  // namespace boost

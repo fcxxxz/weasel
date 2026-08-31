@@ -1,8 +1,8 @@
 ﻿#include "stdafx.h"
-#include <logging.h>
 #include <RimeWithWeasel.h>
 #include <StringAlgorithm.hpp>
 #include <WeaselConstants.h>
+#include <WeaselStyleColor.h>
 #include <WeaselUtility.h>
 
 #include <filesystem>
@@ -13,15 +13,9 @@
 #include <rime_api.h>
 
 #define TRANSPARENT_COLOR 0x00000000
-#define ARGB2ABGR(value)                                 \
-  ((value & 0xff000000) | ((value & 0x000000ff) << 16) | \
-   (value & 0x0000ff00) | ((value & 0x00ff0000) >> 16))
-#define RGBA2ABGR(value)                                   \
-  (((value & 0xff) << 24) | ((value & 0xff000000) >> 24) | \
-   ((value & 0x00ff0000) >> 8) | ((value & 0x0000ff00) << 8))
-typedef enum { COLOR_ABGR = 0, COLOR_ARGB, COLOR_RGBA } ColorFormat;
 
 using namespace weasel;
+static bool hide_ime_mode_icon = false;
 
 static RimeApi* rime_api;
 WeaselSessionId _GenerateNewWeaselSessionId(SessionStatusMap sm, DWORD pid) {
@@ -135,6 +129,9 @@ void RimeWithWeaselHandler::Initialize() {
         }
       }
       m_base_style = m_ui->style();
+      // Warm up UI resources with finalized style to avoid first-show latency.
+      m_ui->Refresh();
+      m_ui->Hide();
     }
     Bool global_ascii = false;
     if (rime_api->config_get_bool(&config, "global_ascii", &global_ascii))
@@ -545,6 +542,9 @@ void RimeWithWeaselHandler::SetOption(WeaselSessionId ipc_id,
   } else {
     rime_api->set_option(to_session_id(ipc_id), opt.c_str(), val);
   }
+  // refresh UI (and tray icon) so the option change takes effect immediately,
+  // e.g. when toggling ascii_mode from the TSF language bar
+  _UpdateUI(ipc_id ? ipc_id : m_active_session);
 }
 
 void RimeWithWeaselHandler::OnUpdateUI(std::function<void()> const& cb) {
@@ -794,6 +794,8 @@ bool RimeWithWeaselHandler::_ShowMessage(Context& ctx, Status& status) {
 
     if (m_message_value == "full_shape" || m_message_value == "!full_shape")
       status.type = FULL_SHAPE;
+  } else if (m_message_type == "property") {
+    return false;
   }
   auto counter = m_ui->IsCountingDown();
   if (!show_icon && counter)
@@ -995,6 +997,9 @@ bool RimeWithWeaselHandler::_Respond(WeaselSessionId ipc_id,
 
   // style
   if (!session_status.__synced) {
+    body.append(L"config.hide_ime_mode_icon=")
+        .append(std::to_wstring((int)hide_ime_mode_icon))
+        .append(L"\n");
     std::wstringstream ss;
     boost::archive::text_woarchive oa(ss);
     oa << session_status.style;
@@ -1071,65 +1076,12 @@ static Bool _RimeGetColor(RimeConfig* config,
     value = fallback;
     return False;
   }
-  const auto color_str = std::string(color);
-  // adjudge if str is 0x 0X # hex color format, return trimmed hex part
-  // out part is 6 or 8 length hex string without white space
-  const auto parse_color_code = [](const std::string& str, std::string& out) {
-    if (str.empty())
-      return false;
-    size_t start = 0;
-    if (str[0] == '#') {
-      start = 1;
-    } else if (str.size() >= 2 &&
-               (str.compare(0, 2, "0x") == 0 || str.compare(0, 2, "0X") == 0)) {
-      start = 2;
-    } else {
-      return false;
-    }
-    const std::string hex_part = str.substr(start);
-    if (hex_part.empty())
-      return false;
-    if ((start == 1 || start == 2) && hex_part.length() != 3 &&
-        hex_part.length() != 4 && hex_part.length() != 6 &&
-        hex_part.length() != 8) {
-      return false;
-    }
-    for (char c : hex_part) {
-      if (!((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') ||
-            (c >= 'A' && c <= 'F')))
-        return false;
-    }
-    out = str.substr(start).substr(0, 8);
-#define _2C(c) std::string(2, c)
-    if (out.size() == 3)
-      out = _2C(out[0]) + _2C(out[1]) + _2C(out[2]);
-    else if (out.size() == 4)
-      out = _2C(out[0]) + _2C(out[1]) + _2C(out[2]) + _2C(out[3]);
-#undef _2C
-    return true;
-  };
-  auto hex_color = std::string();
-  if (parse_color_code(color_str, hex_color)) {
-    value = std::stoul(hex_color, 0, 16);
-    if (hex_color.length() == 6)
-      value = (fmt != COLOR_RGBA) ? (value | 0xff000000)
-                                  : (((unsigned int)value << 8) | 0x000000ff);
-  } else {
-    if (!rime_api->config_get_int(config, key.c_str(), &value)) {
-      value = fallback;
-      return False;
-    }
-    if (value <= 0xffffff)
-      value = (fmt != COLOR_RGBA) ? (value | 0xff000000)
-                                  : (((unsigned int)value << 8) | 0x000000ff);
-    else if (value > 0xffffffff)
-      value &= 0xffffffff;
+  unsigned int parsed = 0;
+  if (!ParseColorValue(std::string(color), fmt, &parsed)) {
+    value = fallback;
+    return False;
   }
-  if (fmt == COLOR_ARGB)
-    value = ARGB2ABGR(value);
-  else if (fmt == COLOR_RGBA)
-    value = RGBA2ABGR(value);
-  value &= 0xffffffff;
+  value = static_cast<int>(parsed);
   return True;
 }
 
@@ -1251,9 +1203,17 @@ void RimeWithWeaselHandler::_UpdateShowNotifications(RimeConfig* config,
   }
 }
 
-// update ui's style parameters, ui has been check before referenced
-static void _UpdateUIStyle(RimeConfig* config, UI* ui, bool initialize) {
-  UIStyle& style(ui->style());
+// Load style parameters from `config` into `style`. When `initialize` is true,
+// unset values are replaced with defaults; otherwise existing values are kept.
+// A non-empty `color_scheme` selects that scheme instead of the active one.
+void LoadWeaselUIStyle(RimeConfig* config,
+                       UIStyle& style,
+                       bool initialize,
+                       const std::string& color_scheme) {
+  if (!rime_api)
+    rime_api = rime_get_api();
+  if (!rime_api || !config)
+    return;
   const std::function<void(std::wstring&)> rmspace = [](std::wstring& str) {
     str = std::regex_replace(str, std::wregex(L"\\s*(,|:|^|$)\\s*"), L"$1");
   };
@@ -1274,6 +1234,7 @@ static void _UpdateUIStyle(RimeConfig* config, UI* ui, bool initialize) {
   _RimeGetIntStr(config, "style/font_point", style.font_point);
   if (style.font_point <= 0)
     style.font_point = 12;
+  _RimeGetBool(config, "hide_ime_mode_icon", initialize, hide_ime_mode_icon);
   _RimeGetIntStr(config, "style/label_font_point", style.label_font_point,
                  "style/font_point", 0, _abs);
   _RimeGetIntStr(config, "style/comment_font_point", style.comment_font_point,
@@ -1323,25 +1284,42 @@ static void _UpdateUIStyle(RimeConfig* config, UI* ui, bool initialize) {
                style.paging_on_scroll);
   _RimeGetBool(config, "style/click_to_capture", initialize,
                style.click_to_capture, true, false);
-  _RimeGetBool(config, "style/fullscreen", false, style.layout_type,
-               ((style.layout_type == UIStyle::LAYOUT_HORIZONTAL)
-                    ? UIStyle::LAYOUT_HORIZONTAL_FULLSCREEN
-                    : UIStyle::LAYOUT_VERTICAL_FULLSCREEN),
-               style.layout_type);
-  _RimeGetBool(config, "style/vertical_text", false, style.layout_type,
-               UIStyle::LAYOUT_VERTICAL_TEXT, style.layout_type);
+  bool fullscreen = false;
+  _RimeGetBool(config, "style/fullscreen", false, fullscreen);
+  bool vertical_text = false;
+  _RimeGetBool(config, "style/vertical_text", false, vertical_text);
+  if (vertical_text) {
+    if (fullscreen) {
+      style.layout_type = UIStyle::LAYOUT_VERTICAL_TEXT_FULLSCREEN;
+    } else {
+      style.layout_type = UIStyle::LAYOUT_VERTICAL_TEXT;
+    }
+  } else {
+    if (fullscreen) {
+      style.layout_type = (style.layout_type == UIStyle::LAYOUT_HORIZONTAL)
+                              ? UIStyle::LAYOUT_HORIZONTAL_FULLSCREEN
+                              : UIStyle::LAYOUT_VERTICAL_FULLSCREEN;
+    }
+  }
   _RimeGetBool(config, "style/vertical_text_left_to_right", false,
                style.vertical_text_left_to_right);
   _RimeGetBool(config, "style/vertical_text_with_wrap", false,
                style.vertical_text_with_wrap);
+  _RimeGetBool(config, "style/vertical_right_to_left", initialize,
+               style.vertical_right_to_left);
   static constexpr Array<bool, 2> _text_orientation = {
       {{"horizontal", false}, {"vertical", true}}};
   bool _text_orientation_bool = false;
   _RimeParseStringOptWithFallback(config, "style/text_orientation",
                                   _text_orientation_bool, _text_orientation,
                                   _text_orientation_bool);
-  if (_text_orientation_bool)
-    style.layout_type = UIStyle::LAYOUT_VERTICAL_TEXT;
+  if (_text_orientation_bool) {
+    if (fullscreen) {
+      style.layout_type = UIStyle::LAYOUT_VERTICAL_TEXT_FULLSCREEN;
+    } else {
+      style.layout_type = UIStyle::LAYOUT_VERTICAL_TEXT;
+    }
+  }
   _RimeGetIntStr(config, "style/label_format", style.label_text_format);
   _RimeGetIntStr(config, "style/mark_text", style.mark_text);
   _RimeGetIntStr(config, "style/layout/baseline", style.baseline, 0, 0, _abs);
@@ -1354,15 +1332,23 @@ static void _UpdateUIStyle(RimeConfig* config, UI* ui, bool initialize) {
   _RimeGetIntStr(config, "style/layout/max_height", style.max_height, 0, 0,
                  _abs);
   // layout (alternative to style/horizontal)
-  static constexpr Array<UIStyle::LayoutType, 5> _layoutArr = {
+  static constexpr Array<UIStyle::LayoutType, 6> _layoutArr = {
       {{"vertical", UIStyle::LAYOUT_VERTICAL},
        {"horizontal", UIStyle::LAYOUT_HORIZONTAL},
        {"vertical_text", UIStyle::LAYOUT_VERTICAL_TEXT},
        {"vertical+fullscreen", UIStyle::LAYOUT_VERTICAL_FULLSCREEN},
-       {"horizontal+fullscreen", UIStyle::LAYOUT_HORIZONTAL_FULLSCREEN}}};
+       {"horizontal+fullscreen", UIStyle::LAYOUT_HORIZONTAL_FULLSCREEN},
+       {"vertical_text+fullscreen", UIStyle::LAYOUT_VERTICAL_TEXT_FULLSCREEN}}};
   _RimeParseStringOptWithFallback(config, "style/layout/type",
                                   style.layout_type, _layoutArr,
                                   style.layout_type);
+  // Keep fullscreen vertical-text mode stable even when layout/type is also
+  // set. Otherwise layout/type can override the earlier
+  // fullscreen+vertical_text combination and cause unintended column wrapping
+  // behavior.
+  if (fullscreen && (vertical_text || _text_orientation_bool)) {
+    style.layout_type = UIStyle::LAYOUT_VERTICAL_TEXT_FULLSCREEN;
+  }
   // disable max_width when full screen
   if (style.layout_type == UIStyle::LAYOUT_HORIZONTAL_FULLSCREEN ||
       style.layout_type == UIStyle::LAYOUT_VERTICAL_FULLSCREEN) {
@@ -1386,10 +1372,6 @@ static void _UpdateUIStyle(RimeConfig* config, UI* ui, bool initialize) {
                  _abs);
   _RimeGetIntStr(config, "style/layout/shadow_radius", style.shadow_radius, 0,
                  0, _abs);
-  // disable shadow for fullscreen layout
-  style.shadow_radius *=
-      (!(style.layout_type == UIStyle::LAYOUT_HORIZONTAL_FULLSCREEN ||
-         style.layout_type == UIStyle::LAYOUT_VERTICAL_FULLSCREEN));
   _RimeGetIntStr(config, "style/layout/shadow_offset_x", style.shadow_offset_x);
   _RimeGetIntStr(config, "style/layout/shadow_offset_y", style.shadow_offset_y);
   // round_corner as alias of hilited_corner_radius
@@ -1437,6 +1419,9 @@ static void _UpdateUIStyle(RimeConfig* config, UI* ui, bool initialize) {
     if (!style.inline_preedit)
       style.hilite_spacing = max(style.hilite_spacing, style.hilite_padding_y);
   }
+  if (style.layout_type == UIStyle::LAYOUT_VERTICAL_TEXT_FULLSCREEN) {
+    style.max_height = 0;
+  }
   // fix padding and margin settings
   int scale = style.margin_x < 0 ? -1 : 1;
   style.margin_x = scale * max(style.hilite_padding_x, abs(style.margin_x));
@@ -1448,15 +1433,24 @@ static void _UpdateUIStyle(RimeConfig* config, UI* ui, bool initialize) {
   // get color scheme
   const int BUF_SIZE = 255;
   char buffer[BUF_SIZE + 1] = {0};
-  if (initialize && rime_api->config_get_string(config, "style/color_scheme",
-                                                buffer, BUF_SIZE))
-    _UpdateUIStyleColor(config, style);
+  if ((initialize && rime_api->config_get_string(config, "style/color_scheme",
+                                                 buffer, BUF_SIZE)) ||
+      !color_scheme.empty())
+    _UpdateUIStyleColor(config, style, color_scheme);
+}
+
+static void _UpdateUIStyle(RimeConfig* config, UI* ui, bool initialize) {
+  LoadWeaselUIStyle(config, ui->style(), initialize);
 }
 // load color configs to style, by "style/color_scheme" or specific scheme name
 // "color" which is default empty
 static bool _UpdateUIStyleColor(RimeConfig* config,
                                 UIStyle& style,
                                 const std::string& color) {
+  if (!rime_api)
+    rime_api = rime_get_api();
+  if (!rime_api || !config)
+    return false;
   const int BUF_SIZE = 255;
   char buffer[BUF_SIZE + 1] = {0};
   std::string color_mark = "style/color_scheme";

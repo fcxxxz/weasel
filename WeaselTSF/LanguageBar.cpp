@@ -1,4 +1,4 @@
-﻿#include "stdafx.h"
+#include "stdafx.h"
 #include <resource.h>
 #include <thread>
 #include <shellapi.h>
@@ -171,9 +171,8 @@ static bool StartWeaselServer(const std::wstring& dir, bool restart) {
 }
 
 static bool open(const std::wstring& path) {
-  std::wstring quoted_path = L"\"" + path + L"\"";
-  return (uintptr_t)ShellExecuteW(NULL, L"open", quoted_path.c_str(), NULL,
-                                  NULL, SW_SHOWNORMAL) > 32;
+  return (uintptr_t)ShellExecuteW(NULL, L"open", path.c_str(), NULL, NULL,
+                                  SW_SHOWNORMAL) > 32;
 }
 
 CLangBarItemButton::CLangBarItemButton(com_ptr<WeaselTSF> pTextService,
@@ -200,7 +199,7 @@ CLangBarItemButton::~CLangBarItemButton() {
   DllRelease();
 }
 
-STDAPI CLangBarItemButton::QueryInterface(REFIID riid, void** ppvObject) {
+STDMETHODIMP CLangBarItemButton::QueryInterface(REFIID riid, void** ppvObject) {
   if (ppvObject == NULL)
     return E_INVALIDARG;
 
@@ -218,11 +217,11 @@ STDAPI CLangBarItemButton::QueryInterface(REFIID riid, void** ppvObject) {
   return E_NOINTERFACE;
 }
 
-STDAPI_(ULONG) CLangBarItemButton::AddRef() {
+STDMETHODIMP_(ULONG) CLangBarItemButton::AddRef() {
   return ++_cRef;
 }
 
-STDAPI_(ULONG) CLangBarItemButton::Release() {
+STDMETHODIMP_(ULONG) CLangBarItemButton::Release() {
   LONG cr = --_cRef;
   assert(_cRef >= 0);
   if (_cRef == 0)
@@ -230,7 +229,7 @@ STDAPI_(ULONG) CLangBarItemButton::Release() {
   return cr;
 }
 
-STDAPI CLangBarItemButton::GetInfo(TF_LANGBARITEMINFO* pInfo) {
+STDMETHODIMP CLangBarItemButton::GetInfo(TF_LANGBARITEMINFO* pInfo) {
   pInfo->clsidService = c_clsidTextService;
   pInfo->guidItem = _guid;
   pInfo->dwStyle = TF_LBI_STYLE_BTN_BUTTON | TF_LBI_STYLE_BTN_MENU |
@@ -240,12 +239,12 @@ STDAPI CLangBarItemButton::GetInfo(TF_LANGBARITEMINFO* pInfo) {
   return S_OK;
 }
 
-STDAPI CLangBarItemButton::GetStatus(DWORD* pdwStatus) {
+STDMETHODIMP CLangBarItemButton::GetStatus(DWORD* pdwStatus) {
   *pdwStatus = _status;
   return S_OK;
 }
 
-STDAPI CLangBarItemButton::Show(BOOL fShow) {
+STDMETHODIMP CLangBarItemButton::Show(BOOL fShow) {
   SetLangbarStatus(TF_LBI_STATUS_HIDDEN, fShow ? FALSE : TRUE);
   return S_OK;
 }
@@ -265,7 +264,7 @@ static LANGID GetActiveProfileLangId() {
   return profile.langid;
 }
 
-STDAPI CLangBarItemButton::GetTooltipString(BSTR* pbstrToolTip) {
+STDMETHODIMP CLangBarItemButton::GetTooltipString(BSTR* pbstrToolTip) {
   LANGID langid = get_language_id();
   if (langid == TEXTSERVICE_LANGID_HANS) {
     *pbstrToolTip = SysAllocString(L"左键切换模式，右键打开菜单");
@@ -279,9 +278,9 @@ STDAPI CLangBarItemButton::GetTooltipString(BSTR* pbstrToolTip) {
   return (*pbstrToolTip == NULL) ? E_OUTOFMEMORY : S_OK;
 }
 
-STDAPI CLangBarItemButton::OnClick(TfLBIClick click,
-                                   POINT pt,
-                                   const RECT* prcArea) {
+STDMETHODIMP CLangBarItemButton::OnClick(TfLBIClick click,
+                                         POINT pt,
+                                         const RECT* prcArea) {
   WeaselDebugLog(L"LanguageBar", L"OnClick click=" + std::to_wstring(click) +
                                      L" pt=(" + std::to_wstring(pt.x) + L"," +
                                      std::to_wstring(pt.y) + L") area_null=" +
@@ -345,7 +344,7 @@ STDAPI CLangBarItemButton::OnClick(TfLBIClick click,
   return S_OK;
 }
 
-STDAPI CLangBarItemButton::InitMenu(ITfMenu* pMenu) {
+STDMETHODIMP CLangBarItemButton::InitMenu(ITfMenu* pMenu) {
   WeaselDebugLog(L"LanguageBar", L"InitMenu pMenu=" + HandleValue(pMenu));
   SetLastError(ERROR_SUCCESS);
   HMENU menu = LoadMenuW(g_hInst, MAKEINTRESOURCE(IDR_MENU_POPUP));
@@ -365,13 +364,13 @@ STDAPI CLangBarItemButton::InitMenu(ITfMenu* pMenu) {
   return S_OK;
 }
 
-STDAPI CLangBarItemButton::OnMenuSelect(UINT wID) {
+STDMETHODIMP CLangBarItemButton::OnMenuSelect(UINT wID) {
   WeaselDebugLog(L"LanguageBar", L"OnMenuSelect wID=" + std::to_wstring(wID));
   _pTextService->_HandleLangBarMenuSelect(wID);
   return S_OK;
 }
 
-STDAPI CLangBarItemButton::GetIcon(HICON* phIcon) {
+STDMETHODIMP CLangBarItemButton::GetIcon(HICON* phIcon) {
   if (ascii_mode) {
     if (_style.current_ascii_icon.empty())
       *phIcon = (HICON)LoadImageW(g_hInst, MAKEINTRESOURCEW(IDI_EN), IMAGE_ICON,
@@ -396,14 +395,14 @@ STDAPI CLangBarItemButton::GetIcon(HICON* phIcon) {
   return (*phIcon == NULL) ? E_FAIL : S_OK;
 }
 
-STDAPI CLangBarItemButton::GetText(BSTR* pbstrText) {
+STDMETHODIMP CLangBarItemButton::GetText(BSTR* pbstrText) {
   *pbstrText = SysAllocString(L"WeaselTSF Button");
   return (*pbstrText == NULL) ? E_OUTOFMEMORY : S_OK;
 }
 
-STDAPI CLangBarItemButton::AdviseSink(REFIID riid,
-                                      IUnknown* punk,
-                                      DWORD* pdwCookie) {
+STDMETHODIMP CLangBarItemButton::AdviseSink(REFIID riid,
+                                            IUnknown* punk,
+                                            DWORD* pdwCookie) {
   if (!IsEqualIID(riid, IID_ITfLangBarItemSink))
     return CONNECT_E_CANNOTCONNECT;
   if (_pLangBarItemSink != NULL)
@@ -418,7 +417,7 @@ STDAPI CLangBarItemButton::AdviseSink(REFIID riid,
   return S_OK;
 }
 
-STDAPI CLangBarItemButton::UnadviseSink(DWORD dwCookie) {
+STDMETHODIMP CLangBarItemButton::UnadviseSink(DWORD dwCookie) {
   if (dwCookie != LANGBARITEMSINK_COOKIE || _pLangBarItemSink == NULL)
     return CONNECT_E_NOCONNECTION;
   _pLangBarItemSink = NULL;
@@ -573,8 +572,10 @@ BOOL WeaselTSF::_InitLanguageBar() {
   if (hr != S_OK)
     return FALSE;
 
-  if ((_pLangBarButton = new CLangBarItemButton(this, GUID_LBI_INPUTMODE,
-                                                _cand->style())) == NULL)
+  const GUID langBarGuid =
+      _config.hide_ime_mode_icon ? GUID_NULL : GUID_LBI_INPUTMODE;
+  if ((_pLangBarButton =
+           new CLangBarItemButton(this, langBarGuid, _cand->style())) == NULL)
     return FALSE;
 
   hr = pLangBarItemMgr->AddItem(_pLangBarButton);
@@ -585,8 +586,8 @@ BOOL WeaselTSF::_InitLanguageBar() {
     return FALSE;
   }
 
-  _pLangBarButton->Show(TRUE);
-  WeaselDebugLog(L"LanguageBar", L"InitLanguageBar Show(TRUE)");
+  _pLangBarButton->Show(!_config.hide_ime_mode_icon);
+  WeaselDebugLog(L"LanguageBar", L"InitLanguageBar Show");
   fRet = TRUE;
 
   return fRet;

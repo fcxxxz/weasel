@@ -24,6 +24,7 @@ int WINAPI _tWinMain(HINSTANCE hInstance,
                      int /*nCmdShow*/) {
   HRESULT hRes = ::CoInitialize(NULL);
   ATLASSERT(SUCCEEDED(hRes));
+  SetProcessDpiAwareness(PROCESS_PER_MONITOR_DPI_AWARE);
 
   AtlInitCommonControls(
       ICC_BAR_CLASSES);  // add flags to support other controls
@@ -42,7 +43,7 @@ int WINAPI _tWinMain(HINSTANCE hInstance,
 
   return nRet;
 }
-int install(bool hant, bool silent);
+int install(const std::wstring& profile, bool silent);
 int uninstall(bool silent);
 bool has_installed();
 
@@ -56,7 +57,7 @@ static std::wstring install_dir() {
 }
 
 static int CustomInstall(bool installing) {
-  bool hant = false;
+  std::wstring profile = L"hans";
   bool silent = false;
   std::wstring user_dir;
 
@@ -73,39 +74,44 @@ static int CustomInstall(bool installing) {
     if (ret == ERROR_SUCCESS && type == REG_SZ) {
       user_dir = value;
     }
-    len = sizeof(data);
-    ret = RegQueryValueEx(hKey, L"Hant", NULL, &type, (LPBYTE)&data, &len);
-    if (ret == ERROR_SUCCESS && type == REG_DWORD) {
-      hant = (data != 0);
+    len = sizeof(value);
+    ret = RegQueryValueEx(hKey, L"Profile", NULL, &type, (LPBYTE)value, &len);
+    if (ret == ERROR_SUCCESS && type == REG_SZ && value[0] != L'\0') {
+      profile = value;
       if (installing)
         silent = true;
+    } else {
+      len = sizeof(data);
+      ret = RegQueryValueEx(hKey, L"Hant", NULL, &type, (LPBYTE)&data, &len);
+      if (ret == ERROR_SUCCESS && type == REG_DWORD) {
+        profile = (data != 0) ? L"hant" : L"hans";
+        if (installing)
+          silent = true;
+      }
     }
     RegCloseKey(hKey);
   }
   bool _has_installed = has_installed();
-  bool install_tsf = installing || !_has_installed;
   if (!silent) {
     InstallOptionsDialog dlg;
     dlg.installed = _has_installed;
-    dlg.hant = hant;
+    dlg.profile = profile;
     dlg.user_dir = user_dir;
     if (IDOK != dlg.DoModal()) {
       if (!installing)
         return 1;  // aborted by user
     } else {
-      hant = dlg.hant;
+      profile = dlg.profile;
       user_dir = dlg.user_dir;
       _has_installed = dlg.installed;
-      install_tsf = installing || !_has_installed;
     }
   }
   WeaselDebugLog(L"WeaselSetup",
                  L"CustomInstall installing=" + std::to_wstring(installing) +
                      L" has_installed=" + std::to_wstring(_has_installed) +
-                     L" silent=" + std::to_wstring(silent) + L" install_tsf=" +
-                     std::to_wstring(install_tsf));
-  if (install_tsf)
-    if (0 != install(hant, silent))
+                     L" silent=" + std::to_wstring(silent));
+  if (!_has_installed)
+    if (0 != install(profile, silent))
       return 1;
 
   if (user_dir.empty()) {
@@ -121,8 +127,16 @@ static int CustomInstall(bool installing) {
                MB_ICONERROR | MB_OK);
     return 1;
   }
-  ret = SetRegKeyValue(HKEY_CURRENT_USER, KEY, L"Hant", (hant ? 1 : 0),
-                       REG_DWORD, false);
+  ret = SetRegKeyValue(HKEY_CURRENT_USER, KEY, L"Profile", profile.c_str(),
+                       REG_SZ, false);
+  if (FAILED(HRESULT_FROM_WIN32(ret))) {
+    MSG_BY_IDS(IDS_STR_ERR_WRITE_PROFILE, IDS_STR_INSTALL_FAILED,
+               MB_ICONERROR | MB_OK);
+    return 1;
+  }
+
+  ret = SetRegKeyValue(HKEY_CURRENT_USER, KEY, L"Hant",
+                       (profile == L"hant" ? 1 : 0), REG_DWORD, false);
   if (FAILED(HRESULT_FROM_WIN32(ret))) {
     MSG_BY_IDS(IDS_STR_ERR_WRITE_HANT, IDS_STR_INSTALL_FAILED,
                MB_ICONERROR | MB_OK);
@@ -172,6 +186,9 @@ static int Run(LPTSTR lpCmdLine) {
           L"/i             - Install Weasel\n"
           L"/s             - Install Weasel (Simplified Chinese)\n"
           L"/t             - Install Weasel (Traditional Chinese)\n"
+          L"/hk            - Install Weasel (Traditional Chinese, Hong Kong)\n"
+          L"/mc            - Install Weasel (Traditional Chinese, Macao)\n"
+          L"/sg            - Install Weasel (Simplified Chinese, Singapore)\n"
           L"/ls            - Set Weasel language to Simplified Chinese\n"
           L"/lt            - Set Weasel language to Traditional Chinese\n"
           L"/le            - Set Weasel language to English\n"
@@ -242,10 +259,19 @@ static int Run(LPTSTR lpCmdLine) {
 
   bool hans = !wcscmp(L"/s", lpCmdLine);
   if (hans)
-    return install(false, silent);
+    return install(L"hans", silent);
   bool hant = !wcscmp(L"/t", lpCmdLine);
   if (hant)
-    return install(true, silent);
+    return install(L"hant", silent);
+  bool hongkong = !wcscmp(L"/hk", lpCmdLine);
+  if (hongkong)
+    return install(L"hongkong", silent);
+  bool macau = !wcscmp(L"/mc", lpCmdLine);
+  if (macau)
+    return install(L"macau", silent);
+  bool singapore = !wcscmp(L"/sg", lpCmdLine);
+  if (singapore)
+    return install(L"singapore", silent);
   bool installing = !wcscmp(L"/i", lpCmdLine);
   return CustomInstall(installing);
 }

@@ -2,8 +2,9 @@
 
 #include "resource.h"
 #include <rime_levers_api.h>
+#include <CDialogDpiAware.h>
 
-class SwitcherSettingsDialog : public CDialogImpl<SwitcherSettingsDialog> {
+class SwitcherSettingsDialog : public CDialogDpiAware<SwitcherSettingsDialog> {
  public:
   enum { IDD = IDD_SWITCHER_SETTING };
 
@@ -12,6 +13,7 @@ class SwitcherSettingsDialog : public CDialogImpl<SwitcherSettingsDialog> {
 
  protected:
   BEGIN_MSG_MAP(SwitcherSettingsDialog)
+  CHAIN_MSG_MAP(CDialogDpiAware<SwitcherSettingsDialog>)
   MESSAGE_HANDLER(WM_INITDIALOG, OnInitDialog)
   MESSAGE_HANDLER(WM_CLOSE, OnClose)
   COMMAND_HANDLER(IDC_GET_SCHEMATA, BN_CLICKED, OnGetSchemata)

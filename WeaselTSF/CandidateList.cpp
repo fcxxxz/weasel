@@ -209,7 +209,8 @@ void CCandidateList::UpdateUI(const Context& ctx, const Status& status) {
   /// if it is owned by active view window
   //_UpdateOwner();
   _ui->Update(ctx, status);
-  _UpdateUIElement();
+  if (_pbShow == FALSE)
+    _UpdateUIElement();
 
   if (status.composing)
     Show(_pbShow);
@@ -283,6 +284,9 @@ HRESULT CCandidateList::_UpdateUIElement() {
 }
 
 void CCandidateList::StartUI() {
+  if (_uiStarted)
+    return;
+
   com_ptr<ITfThreadMgr> pThreadMgr = _tsf->_GetThreadMgr();
   if (!pThreadMgr) {
     return;
@@ -302,15 +306,26 @@ void CCandidateList::StartUI() {
                               bool* const next, bool* const scroll_next) {
       _tsf->HandleUICallback(sel, hov, next, scroll_next);
     });
-  pUIElementMgr->BeginUIElement(this, &_pbShow, &uiid);
+  if (FAILED(pUIElementMgr->BeginUIElement(this, &_pbShow, &uiid)))
+    return;
+  _uiStarted = true;
   // pUIElementMgr->UpdateUIElement(uiid);
   if (_pbShow) {
     _ui->style() = _style;
     _MakeUIWindow();
+    if (!_ui_warmed_up && _ui->hwnd() != nullptr) {
+      // Warm up render resources before first visible paint in TSF path.
+      _ui->Refresh();
+      _ui->Hide();
+      _ui_warmed_up = true;
+    }
   }
 }
 
 void CCandidateList::EndUI() {
+  if (!_uiStarted)
+    return;
+
   com_ptr<ITfThreadMgr> pThreadMgr = _tsf->_GetThreadMgr();
   if (pThreadMgr) {
     com_ptr<ITfUIElementMgr> emgr;
@@ -320,6 +335,7 @@ void CCandidateList::EndUI() {
     if (emgr != NULL)
       emgr->EndUIElement(uiid);
   }
+  _uiStarted = false;
   _DisposeUIWindow();
 }
 
@@ -342,6 +358,7 @@ void CCandidateList::_DisposeUIWindowAll() {
 
   // call _ui->Destroy(true) to clean resources
   _ui->Destroy(true);
+  _ui_warmed_up = false;
 }
 
 void CCandidateList::_MakeUIWindow() {

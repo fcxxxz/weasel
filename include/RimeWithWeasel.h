@@ -110,6 +110,11 @@ inline bool ShouldSuppressInlineOptionNotification(
          (message_value == "ascii_mode" || message_value == "!ascii_mode");
 }
 
+void LoadWeaselUIStyle(RimeConfig* config,
+                       weasel::UIStyle& style,
+                       bool initialize = true,
+                       const std::string& color_scheme = std::string());
+
 class RimeWithWeaselHandler : public weasel::RequestHandler {
  public:
   RimeWithWeaselHandler(weasel::UI* ui);
