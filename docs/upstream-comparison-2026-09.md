@@ -223,3 +223,13 @@ SessionStatus——会话按 ipc_id 而非连接归属，需连接级追踪才�
   语言栏菜单项。
 验证：构建绿；单测/parser 门 0 退出；WeaselServer.exe 二进制无任何
 WinSparkle 引用；沙盒冒烟存活+干净退出。
+
+### 8.8 打包链路与 librime（2026-09-01）
+
+- CI（ci.yml）：推送 master 自动出滚动 release（tag=latest，预发布），
+  含安装包 weasel*.exe 与调试符号；winsparkle 构建步骤与安装包内
+  WinSparkle.dll 一并移除（对应 §8.7）；update-appcast.yml 删除。
+- librime 升级至 1.17.0（2026-06-06 发布，commit 33e7814）：CI 用
+  `-tag 1.17.0` 钉版保证可复现；本地经 gh 下载资产按 get-rime.ps1 的
+  dev 布局手工布置（API 匿名限流 403 的绕行方案），全量重建 + 单测/
+  parser 门 + 真服务器冒烟全部通过。
