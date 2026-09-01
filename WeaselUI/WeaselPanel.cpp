@@ -193,6 +193,13 @@ void WeaselPanel::ReleaseAllResources() {
 void WeaselPanel::MoveTo(RECT rc) {
   if (!m_hWnd || !m_layout)
     return;
+  if (!::IsWindowVisible(m_hWnd)) {
+    // hidden: just remember where to place; the catch-up refresh on
+    // show performs positioning with this input position
+    m_inputPos = rc;
+    m_inputPos.bottom += 6;
+    return;
+  }
   m_redraw_by_monitor_change = false;
   bool should_reset_sticky =
       (m_ctx.empty() || (abs(rc.left - m_inputPos.left) > 50) ||

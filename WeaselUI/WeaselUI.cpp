@@ -11,6 +11,23 @@ class UIImpl {
   bool IsShown() const {
     return panel.IsWindow() && ::IsWindowVisible(panel.hwnd());
   }
+  // While the panel is hidden nobody can see it, so per-keystroke UI
+  // work (DWrite layout/measure) is pure waste - it showed up as the
+  // dominant p95 tail (~145us) of every key. Defer the refresh; the
+  // show paths catch up with exactly one refresh before painting.
+  void RefreshIfVisible() {
+    if (panel.IsWindow() && ::IsWindowVisible(panel.hwnd()))
+      panel.Refresh();
+    else
+      dirty_on_show = true;
+  }
+  void RefreshDirty() {
+    if (dirty_on_show) {
+      dirty_on_show = false;
+      panel.Refresh();
+    }
+  }
+  bool dirty_on_show = true;
   void Refresh() {
     if (!panel.IsWindow())
       return;
@@ -23,12 +40,15 @@ class UIImpl {
     panel.ShowWindow(SW_HIDE);
   }
   void RepositionPreview() {
-    if (panel.IsWindow())
+    if (panel.IsWindow()) {
+      RefreshDirty();
       panel.RepositionPreview();
+    }
   }
   void Show() {
     if (!panel.IsWindow())
       return;
+    RefreshDirty();
     panel.ShowWindow(SW_SHOWNA);
   }
   void Hide() {
@@ -36,7 +56,10 @@ class UIImpl {
       return;
     panel.ShowWindow(SW_HIDE);
   }
-  void ShowWithTimeout(size_t millisec) { panel.ShowWithTimeout(millisec); }
+  void ShowWithTimeout(size_t millisec) {
+    RefreshDirty();
+    panel.ShowWithTimeout(millisec);
+  }
   bool IsCountingDown() const { return panel.IsCountingDown(); }
 };
 // ----------------------------------------------------------------------------
@@ -71,6 +94,13 @@ void UI::Update(const Context& ctx, const Status& status) {
             L"..." + c.str.substr(c.str.length() - 1);
       }
     }
+  }
+  if (pimpl_ && pimpl_->panel.IsWindow() &&
+      !::IsWindowVisible(pimpl_->panel.hwnd())) {
+    // hidden: keep the fresh (abbreviated) context for the catch-up refresh
+    // on show; skip per-keystroke layout work while invisible
+    pimpl_->dirty_on_show = true;
+    return;
   }
   Refresh();
 }

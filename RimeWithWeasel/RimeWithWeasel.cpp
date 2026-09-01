@@ -301,7 +301,6 @@ BOOL RimeWithWeaselHandler::ProcessKeyEvent(KeyEvent keyEvent,
   SessionStatus& session_status = get_session_status(ipc_id);
   RimeSessionId session_id = session_status.session_id;
   bool was_composing = !!session_status.status.is_composing;
-
   Bool handled = rime_api->process_key(session_id, keyEvent.keycode,
                                        expand_ibus_modifier(keyEvent.mask));
 
@@ -324,6 +323,7 @@ BOOL RimeWithWeaselHandler::ProcessKeyEvent(KeyEvent keyEvent,
   _Respond(ipc_id, eat, &status_snapshot, &has_commit);
 
   _UpdateUI(ipc_id, &status_snapshot);
+
   m_active_session = ipc_id;
   bool is_composing = status_snapshot.has_status
                           ? status_snapshot.status.composing
