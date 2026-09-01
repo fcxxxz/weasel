@@ -221,12 +221,6 @@ int WINAPI _tWinMain(HINSTANCE hInstance,
                                         std::to_wstring(connected));
     if (connected)  // try to connect to running server
     {
-      if (check_updates) {
-        WeaselDebugLog(L"WeaselServer",
-                       L"forwarding update check to existing server");
-        client.TrayCommand(ID_WEASELTRAY_CHECKUPDATE);
-        return 0;
-      }
       if (!weasel::ShouldShutdownExistingService(lpstrCmdLine)) {
         WeaselDebugLog(
             L"WeaselServer",
@@ -283,11 +277,6 @@ int WINAPI _tWinMain(HINSTANCE hInstance,
         L"WeaselServer",
         L"exit: recovery suppressed by manual exit before app start");
     return 0;
-  }
-
-  if (check_updates) {
-    WeaselDebugLog(L"WeaselServer", L"command /update");
-    WeaselServerApp::check_update();
   }
 
   CreateDirectory(WeaselUserDataPath().c_str(), NULL);

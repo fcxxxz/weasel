@@ -210,3 +210,16 @@ SessionStatus——会话按 ipc_id 而非连接归属，需连接级追踪才�
 沙盒 `/q` 只写 `weasel-service-manual-exit<ns>.flag`，默认命名空间零接触。
 教训：新增任何跨进程的全局路径（文件/注册表/事件）都必须过一遍命名空间
 隔离审查。
+
+### 8.7 移除官方升级通道（2026-09-01，按用户要求）
+
+自编译版本若保留 WinSparkle 官方 feed（rime.github.io），官方发新版后会
+提示升级并可能用官方安装包覆盖定制构建。已整体移除：
+- WeaselServerApp：删除 win_sparkle 初始化/语言/注册表/清理调用与
+  check_update()；托盘菜单不再注册"检查新版本"。
+- WeaselServer.cpp：/update 命令行不再触发检查（保留参数解析与日志）。
+- WeaselServer.rc：删除 3 个语言的"检查新版本"菜单项 + 4 个 APPCAST
+  feed 资源（UTF-16 编辑，BOM 与编码已验证）；WeaselTSF.rc 删除对应
+  语言栏菜单项。
+验证：构建绿；单测/parser 门 0 退出；WeaselServer.exe 二进制无任何
+WinSparkle 引用；沙盒冒烟存活+干净退出。

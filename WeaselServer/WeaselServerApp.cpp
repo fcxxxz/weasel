@@ -25,17 +25,8 @@ int WeaselServerApp::Run() {
   }
   WeaselDebugLog(L"WeaselServerApp", L"m_server.Start ok");
 
-  // win_sparkle_set_appcast_url("http://localhost:8000/weasel/update/appcast.xml");
-  win_sparkle_set_registry_path("Software\\Rime\\Weasel\\Updates");
-  if (GetThreadUILanguage() ==
-      MAKELANGID(LANG_CHINESE, SUBLANG_CHINESE_TRADITIONAL))
-    win_sparkle_set_lang("zh-TW");
-  else if (GetThreadUILanguage() ==
-           MAKELANGID(LANG_CHINESE, SUBLANG_CHINESE_SIMPLIFIED))
-    win_sparkle_set_lang("zh-CN");
-  else
-    win_sparkle_set_lang("en");
-  win_sparkle_init();
+  // 官方升级通道已按需求移除：不再自动检查 rime 发布源，也不提供手动
+  // “检查新版本”入口（自编译版本被官方安装包覆盖的风险由此消除）。
   m_ui.Create(m_server.GetHWnd());
 
   m_handler->Initialize();
@@ -58,7 +49,6 @@ int WeaselServerApp::Run() {
   m_handler->Finalize();
   m_ui.Destroy();
   tray_icon.RemoveIcon();
-  win_sparkle_cleanup();
 
   return ret;
 }
@@ -95,7 +85,6 @@ void WeaselServerApp::SetupMenuHandlers() {
                           std::bind(open, L"https://rime.im/"));
   m_server.AddMenuHandler(ID_WEASELTRAY_FORUM,
                           std::bind(open, L"https://rime.im/discuss/"));
-  m_server.AddMenuHandler(ID_WEASELTRAY_CHECKUPDATE, check_update);
   m_server.AddMenuHandler(ID_WEASELTRAY_INSTALLDIR, std::bind(explore, dir));
   m_server.AddMenuHandler(ID_WEASELTRAY_USERCONFIG,
                           std::bind(explore, WeaselUserDataPath()));
