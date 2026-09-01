@@ -21,6 +21,7 @@ class WeaselPanel {
   }
   void MoveTo(RECT rc);
   void Refresh();
+  void Prewarm();
   void RepositionPreview();
 
   BOOL IsWindow() const;

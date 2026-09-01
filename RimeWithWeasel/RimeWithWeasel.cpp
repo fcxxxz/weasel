@@ -129,9 +129,10 @@ void RimeWithWeaselHandler::Initialize() {
         }
       }
       m_base_style = m_ui->style();
-      // Warm up UI resources with finalized style to avoid first-show latency.
-      m_ui->Refresh();
-      m_ui->Hide();
+      // Warm up UI resources with finalized style to avoid first-show
+      // latency: init plus one throwaway draw on the hidden panel keeps
+      // D3D/DWrite cold-start costs off the first keystroke.
+      m_ui->Prewarm();
     }
     Bool global_ascii = false;
     if (rime_api->config_get_bool(&config, "global_ascii", &global_ascii))

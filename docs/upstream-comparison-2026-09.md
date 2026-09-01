@@ -130,7 +130,8 @@ SessionStatus——会话按 ipc_id 而非连接归属，需连接级追踪才�
 
 ## 6. 剩余风险（需实机）
 
-- #1906 类 D2D 并发绘制崩溃：需多宿主压力 + dump；线程收口方案待定。
+- #1906 类 D2D 并发绘制崩溃：复扫确认本地 g_api_mutex 串行化已结构性排除
+  （§8.3）；实机压力验证仍保留在回归清单。
 - Win32/ARM64 未编（本机仅验证 x64）；Win 8.1 真机未测（DirectComposition 下限）。
 - UIStyle 序列化字段变化要求 Server 与 TSF DLL 同包升级（单换任一会错位）。
 - Chrome/Firefox/VSCode/Word 长时输入、多显示器 DPI 切换、#1822 Explorer 右键
@@ -143,3 +144,59 @@ SessionStatus——会话按 ipc_id 而非连接归属，需连接级追踪才�
 - 仓库路径含中文时，git-bash 向 cmd/PowerShell 传参会乱码；可建 ASCII junction
   （如 `F:\weasel-build`）后再调用 MSBuild。
 - 测试单独构建需传 `-p:SolutionDir=<repo>\`，否则 include 路径解析错误。
+
+## 8. 全量复扫（2026-09-01）：两仓库 issue/PR/分支决策表
+
+用 GitHub API 全量枚举 rime/weasel（issue+PR）与 fxliang/weasel（全部分支+提交），
+逐项与本地代码比对后分四类。
+
+### 8.1 确认已在（此前合并已覆盖，本轮验证判据）
+
+| 来源 | 项 | 本地判据 |
+| --- | --- | --- |
+| pb `8026d75` | 样式编辑器（WeaselStyleKeys/Color + UIStyleSettingsDialog） | 文件存在 |
+| pb `4e1206f` | 对话框重复 DPI 缩放修复 | `m_initialDpi`/`m_originalFont` 判据 |
+| tray `57a812c` = 上游 #1912 | 托盘刷新移出管道线程（快照+合并+排空） | `WeaselTrayIconState`/`RequestRefresh`/`ApplyRefresh`/`DisableRefresh` |
+| pb `416543c` | WIC 工厂缓存 + GDI 泄漏修复 | `DeviceResources::Get().wicFactory` |
+| 上游 #1835 (`829b07e`) | STDMETHODIMP 误用 | 无 `STDAPI C*` 残留 |
+| 上游 #1910 | 版本宏 C++ 构建 | WeaselConstants.h 已含 |
+| 上游 #1779+pb `da1ef1c` | 负边距隐藏候选窗的 tip 抑制 | `_UpdateHideCandidates` 完整逻辑 |
+
+### 8.2 本轮新吸收（commit 见 git log）
+
+- **UI Prewarm**（#1886 思路适配）：`WeaselPanel::Prewarm()` = Refresh + 隐藏窗口上
+  强制一次 DoPaint。此前 Initialize 已有 Refresh+Hide（设备/字体格式已预热），但
+  隐藏窗口收不到 WM_PAINT，BeginDraw/Present/字形光栅化仍冷——现在首键前全部焐热。
+  代价：空闲内存 +几 MB（D2D 设备提前常驻）；收益：首个候选窗零冷启动。
+- **#1869**：`_ResizeWindow`/`_Reposition` 尺寸与位置未变时跳过 SetWindowPos
+  （隐藏时；可见时仍重申 TOPMOST 以维持置顶语义），消除每键次冗余窗口管理调用。
+
+### 8.3 判定为"已被等价实现/设计排除"（不吸收代码）
+
+- **#1906**（服务端 D2D 并发崩溃）：本地所有触碰 UI 的 handler 调用都被单一
+  `g_api_mutex` 串行化（会话/焦点类阻塞锁；按键 try-lock 拿不到即放行不吞键），
+  并发绘制窗口结构性不存在。
+- **#1913**（新宿主进程首键 260-820ms）：成因是 weasel.dll 进程内建 D2D 设备；
+  本地 TSF dll 无任何 D2D（渲染全在服务端），且服务端冷启动已由 Prewarm 解决。
+- **#1885**（位置更新去重）：`input_position_cache`（ShouldSend/MarkSent/Reset）
+  已等价实现 IPC 侧去重。
+- **#1908**（隐藏候选窗时状态图标每键弹出）：pb 的 `hide_candidates` 逻辑
+  （margin_negative + inline_no_candidates 双路径）已覆盖；图标独立显示为
+  ascii_tip 的既定特性。
+
+### 8.4 明确不吸收（含理由）
+
+- **#1462**（删除 CUAS 占位空格机制）：与本地"门控 CUAS workaround"（77b40a7）
+  是两种模型；整删改变 TSF 提交语义，无实机回归测试 rigs 前不动。
+- **#1911**（安装器区域 profiles CN/TW/HK/MC/SG）：单用户简中场景无收益。
+- **#1905**（keyboard_layout 键位映射）、**#1895**（langbar 值驱动同步）、
+  **#1329/#1471/#1854/#1726**（未合并大特性）：按需再议。
+- **#1899/#1892/#1894/#1873/#1651/#1830/#1796/#1853/#1916**（gvim/气泡重叠/
+  多显示器闪烁/黑块等）：场景狭窄或上游无进展，记录备查。
+- fxliang `ui-fixes` 分支（GDI+ 时代 25 提交）：被 pb D2D 重写整体取代。
+
+### 8.5 本轮验证
+
+构建绿（Release x64 全解决方案）；parser/unit 门 0 退出；沙盒真服务器冒烟
+（隔离命名空间 + 真实 mohu 方案）：15s 存活、`/q` 干净退出、日志无渲染错误、
+空闲 WS 56.2MB / 提交 65.7MB（含预热后的 D2D 常驻，与浸泡期数据一致）。

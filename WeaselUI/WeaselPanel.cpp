@@ -226,6 +226,12 @@ void WeaselPanel::MoveTo(RECT rc) {
 
 void WeaselPanel::_ResizeWindow() {
   CSize& size = m_layout->GetContentSize();
+  // Refresh() runs on every keystroke; skip the resize and the swapchain
+  // buffer rebuild it triggers when the window already has this size.
+  RECT rc{};
+  if (::GetWindowRect(m_hWnd, &rc) && rc.right - rc.left == size.cx &&
+      rc.bottom - rc.top == size.cy)
+    return;
   SetWindowPos(m_hWnd, 0, 0, 0, size.cx, size.cy,
                SWP_NOACTIVATE | SWP_NOMOVE | SWP_NOZORDER | SWP_NOREDRAW);
   m_pD2D->OnResize(size.cx, size.cy);
@@ -316,6 +322,16 @@ void WeaselPanel::Refresh() {
     _Reposition();
   }
   RedrawWindow();
+}
+
+void WeaselPanel::Prewarm() {
+  // Startup warm-up on the hidden panel. Refresh() initializes the D3D
+  // device, swapchain and text formats, but a hidden window never receives
+  // WM_PAINT, so the first BeginDraw/Present would stay cold: force one
+  // throwaway draw cycle to pay driver and glyph-rasterization costs here
+  // instead of on the first keystroke (upstream #1913/#1886).
+  Refresh();
+  DoPaint();
 }
 
 void WeaselPanel::RepositionPreview() {
@@ -880,6 +896,10 @@ void WeaselPanel::_Reposition(bool adj) {
   if (y < rcWorkArea.top)
     y = rcWorkArea.top;
   m_inputPos.bottom = y;
+  // Skip redundant moves of the hidden panel (Refresh() lands here on every
+  // keystroke); keep re-asserting topmost while visible.
+  if (x == rcWindow.left && y == rcWindow.top && !::IsWindowVisible(m_hWnd))
+    return;
   SetWindowPos(m_hWnd, HWND_TOPMOST, x, y, 0, 0,
                SWP_NOSIZE | SWP_NOACTIVATE | SWP_NOREDRAW);
 }

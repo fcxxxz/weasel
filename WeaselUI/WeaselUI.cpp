@@ -16,6 +16,12 @@ class UIImpl {
       return;
     panel.Refresh();
   }
+  void Prewarm() {
+    if (!panel.IsWindow())
+      return;
+    panel.Prewarm();
+    panel.ShowWindow(SW_HIDE);
+  }
   void RepositionPreview() {
     if (panel.IsWindow())
       panel.RepositionPreview();
@@ -71,6 +77,11 @@ void UI::Update(const Context& ctx, const Status& status) {
 void UI::Refresh() {
   if (pimpl_) {
     pimpl_->Refresh();
+  }
+}
+void UI::Prewarm() {
+  if (pimpl_) {
+    pimpl_->Prewarm();
   }
 }
 void UI::RepositionPreview() {

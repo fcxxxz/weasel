@@ -38,6 +38,8 @@ class UI {
   BOOL IsShown() const;
   // 重绘界面
   void Refresh();
+  // 启动时在隐藏窗口上初始化渲染资源并完成一次预热绘制
+  void Prewarm();
   // Reattach an undragged preview window to its parent dialog.
   void RepositionPreview();
   // 置输入焦点位置（光标跟随时移动候选窗）但不重绘
