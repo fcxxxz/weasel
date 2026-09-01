@@ -978,13 +978,22 @@ bool RimeWithWeaselHandler::_Respond(WeaselSessionId ipc_id,
       }
     }
     if (has_candidates) {
-      std::wstringstream ss;
-      boost::archive::text_woarchive oa(ss);
+      // Re-serializing the candidate archive dominates this response body;
+      // when the page did not change the client still holds the previous
+      // list, so send it only when it differs from the last one.
+      if (!session_status.__synced ||
+          session_status.last_cinfo != cinfo) {
+        std::wstringstream ss;
+        boost::archive::text_woarchive oa(ss);
 
-      oa << cinfo;
+        oa << cinfo;
 
-      auto s = ss.str();
-      body.append(L"ctx.cand=").append(std::move(s)).append(L"\n");
+        auto s = ss.str();
+        body.append(L"ctx.cand=").append(std::move(s)).append(L"\n");
+        session_status.last_cinfo = cinfo;
+      }
+    } else if (!session_status.last_cinfo.empty()) {
+      session_status.last_cinfo = weasel::CandidateInfo();
     }
     rime_api->free_context(&ctx);
   }

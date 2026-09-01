@@ -483,8 +483,11 @@ void WeaselPanel::DoPaint() {
     m_pD2D->InitDirect2D();
     return;
   }
-  // Make the swap chain available to the composition engine
-  HRESULT hrPresent = m_pD2D->swapChain->Present(1, 0);  // sync
+  // Make the swap chain available to the composition engine.
+  // SyncInterval 0: never wait for a vblank before presenting - a keystroke-
+  // driven candidate window should show the newest frame immediately; waiting
+  // up to a full vblank (8ms @ 120Hz) per frame reads as typing lag.
+  HRESULT hrPresent = m_pD2D->swapChain->Present(0, 0);
   if (hrPresent == DXGI_ERROR_DEVICE_REMOVED ||
       hrPresent == DXGI_ERROR_DEVICE_RESET) {
     DEBUG << "Device lost during Present: " << HRESULTToString(hrPresent);

@@ -400,6 +400,17 @@ PtTextFormat D2D::GetOrCreateTextFormat(const std::wstring& face,
 
     {
       std::lock_guard<std::mutex> lk(cacheMutex);
+      // Bound the cache: every schema/font/DPI combination inserts a new
+      // entry and stale ones are never evicted, so long sessions with many
+      // schemas would grow without limit. A full reset on overflow is rare
+      // (a working set uses a handful of formats) and formats rebuild lazily.
+      static constexpr size_t kMaxCachedTextFormats = 64;
+      if (textFormatCache.size() >= kMaxCachedTextFormats) {
+        for (auto& kv : textFormatCache) {
+          kv.second.Reset();
+        }
+        textFormatCache.clear();
+      }
       textFormatCache.emplace(key, pFormat);
     }
   }

@@ -655,37 +655,53 @@ class TestRequestHandler : public weasel::RequestHandler {
  public:
   TestRequestHandler() : m_counter(0) {
     std::cerr << "handler ctor." << std::endl;
-  }
-  virtual ~TestRequestHandler() {
+  }  virtual ~TestRequestHandler() {
     std::cerr << "handler dtor: " << m_counter << std::endl;
   }
   // Signatures must match RequestHandler exactly; UINT != WeaselSessionId
   // (unsigned long) on MSVC, and a silent non-override makes the base no-ops
   // answer every request with 0. `override` keeps this from regressing again.
+  // Per-request logging is compiled out by default: line-buffered cerr writes
+  // showed up as millisecond outliers in /bench. Enable WEASEL_TEST_TRACE to
+  // get them back while debugging the harness.
   DWORD FindSession(WeaselSessionId ipc_id) override {
-    std::cerr << "FindSession: " << ipc_id << std::endl;
+    if (trace_enabled_)
+      std::cerr << "FindSession: " << ipc_id << std::endl;
     return (ipc_id <= m_counter ? ipc_id : 0);
   }
   DWORD AddSession(LPWSTR buffer, EatLine eat = 0) override {
-    std::cerr << "AddSession: " << m_counter + 1 << std::endl;
+    if (trace_enabled_)
+      std::cerr << "AddSession: " << m_counter + 1 << std::endl;
     return ++m_counter;
   }
   DWORD RemoveSession(WeaselSessionId ipc_id) override {
-    std::cerr << "RemoveClient: " << ipc_id << std::endl;
+    if (trace_enabled_)
+      std::cerr << "RemoveClient: " << ipc_id << std::endl;
     return 0;
   }
   BOOL ProcessKeyEvent(weasel::KeyEvent keyEvent,
                        WeaselSessionId ipc_id,
                        EatLine eat) override {
-    std::cerr << "ProcessKeyEvent: " << ipc_id << " keycode: " << keyEvent.keycode
-              << " mask: " << keyEvent.mask << std::endl;
+    if (trace_enabled_)
+      std::cerr << "ProcessKeyEvent: " << ipc_id
+                << " keycode: " << keyEvent.keycode << " mask: " << keyEvent.mask
+                << std::endl;
     eat(std::wstring(L"Greeting=Hello, 小狼毫.\n"));
     return TRUE;
   }
 
  private:
+  static bool trace_enabled_;
   unsigned int m_counter;
 };
+
+bool TestRequestHandler::trace_enabled_ = []() {
+  WCHAR value[4] = {0};
+  DWORD length =
+      GetEnvironmentVariableW(L"WEASEL_TEST_TRACE", value,
+                              static_cast<DWORD>(_countof(value)));
+  return length > 0 && value[0] != L'0';
+}();
 
 int server_main() {
   HRESULT hRes = _Module.Init(NULL, GetModuleHandle(NULL));

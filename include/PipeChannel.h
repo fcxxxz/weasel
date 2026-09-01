@@ -75,6 +75,10 @@ class PipeChannelBase {
     return context.get();
   }
 
+  // One reusable manual-reset event per transacting thread, avoiding
+  // CreateEvent/CloseHandle on every overlapped I/O.
+  HANDLE _GetIoEvent() const;
+
  protected:
   std::wstring pname;
   // Thread-local pipe handle for isolation
@@ -82,6 +86,8 @@ class PipeChannelBase {
   const size_t buff_size;
   // Thread-local context for buffer and state
   mutable boost::thread_specific_ptr<ChannelContext> context;
+  // Thread-local overlapped I/O event
+  mutable boost::thread_specific_ptr<HANDLE> io_event_ptr;
 
  private:
   /* Security attributes */

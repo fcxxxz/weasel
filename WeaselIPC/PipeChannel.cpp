@@ -16,23 +16,45 @@ using namespace boost;
   }
 
 namespace {
+// Reuses one manual-reset event per transacting thread instead of paying
+// CreateEvent/CloseHandle for every overlapped read or write; kernel handle
+// churn showed up as millisecond-scale outliers in round-trip latency.
 struct OverlappedOp {
   OVERLAPPED ov;
-  OverlappedOp() : ov() { ov.hEvent = ::CreateEvent(NULL, TRUE, FALSE, NULL); }
-  ~OverlappedOp() {
-    if (ov.hEvent)
-      ::CloseHandle(ov.hEvent);
+  explicit OverlappedOp(HANDLE cached_event) : ov() {
+    ov.hEvent = cached_event;
+    // The event stays signaled after a completed operation (manual reset),
+    // so arm it before the I/O is issued.
+    ::ResetEvent(cached_event);
   }
 };
+}  // namespace
+
+namespace {
+void CloseIoEvent(HANDLE* event_handle) {
+  if (event_handle && *event_handle)
+    ::CloseHandle(*event_handle);
+}
 }  // namespace
 
 PipeChannelBase::PipeChannelBase(std::wstring&& pn_cmd,
                                  size_t bs = 4 * 1024,
                                  SECURITY_ATTRIBUTES* s = NULL)
-    : pname(pn_cmd), buff_size(bs), sa(s) {};
+    : pname(pn_cmd),
+      buff_size(bs),
+      sa(s),
+      io_event_ptr(&CloseIoEvent) {};
 
 PipeChannelBase::~PipeChannelBase() {
   // Thread-specific pointers are cleaned up automatically
+}
+
+HANDLE PipeChannelBase::_GetIoEvent() const {
+  if (!io_event_ptr.get()) {
+    HANDLE event = ::CreateEvent(NULL, TRUE, FALSE, NULL);
+    io_event_ptr.reset(new HANDLE(event ? event : NULL));
+  }
+  return *io_event_ptr.get();
 }
 
 bool PipeChannelBase::_Ensure() {
@@ -135,7 +157,7 @@ size_t PipeChannelBase::_WritePipe(HANDLE pipe,
                                    size_t s,
                                    char* b,
                                    DWORD timeout_ms) {
-  OverlappedOp op;
+  OverlappedOp op(_GetIoEvent());
   BOOL success = ::WriteFile(pipe, b, static_cast<DWORD>(s), NULL, &op.ov);
   DWORD lwritten = 0;
   DWORD err = _WaitIo(pipe, op.ov, success, timeout_ms, &lwritten);
@@ -160,7 +182,7 @@ void PipeChannelBase::_Receive(HANDLE pipe,
                                DWORD timeout_ms) {
   DWORD err;
   {
-    OverlappedOp op;
+  OverlappedOp op(_GetIoEvent());
     BOOL success =
         ::ReadFile(pipe, msg, static_cast<DWORD>(rec_len), NULL, &op.ov);
     err = _WaitIo(pipe, op.ov, success, timeout_ms, NULL);
@@ -168,7 +190,7 @@ void PipeChannelBase::_Receive(HANDLE pipe,
   if (err == ERROR_MORE_DATA) {
     auto ctx = _GetContext();
     memset(ctx->buffer.get(), 0, buff_size);
-    OverlappedOp op;
+  OverlappedOp op(_GetIoEvent());
     BOOL success = ::ReadFile(pipe, ctx->buffer.get(),
                               static_cast<DWORD>(buff_size), NULL, &op.ov);
     err = _WaitIo(pipe, op.ov, success, timeout_ms, NULL);
@@ -186,7 +208,7 @@ HANDLE PipeChannelBase::_ConnectServerPipe(std::wstring& pn) {
   if (pipe == INVALID_HANDLE_VALUE) {
     _ThrowLastError;
   }
-  OverlappedOp op;
+  OverlappedOp op(_GetIoEvent());
   BOOL ok = ::ConnectNamedPipe(pipe, &op.ov);
   DWORD err = ok ? ERROR_SUCCESS : ::GetLastError();
   if (!ok && err == ERROR_IO_PENDING) {
