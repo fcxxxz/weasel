@@ -200,3 +200,13 @@ SessionStatus——会话按 ipc_id 而非连接归属，需连接级追踪才�
 构建绿（Release x64 全解决方案）；parser/unit 门 0 退出；沙盒真服务器冒烟
 （隔离命名空间 + 真实 mohu 方案）：15s 存活、`/q` 干净退出、日志无渲染错误、
 空闲 WS 56.2MB / 提交 65.7MB（含预热后的 D2D 常驻，与浸泡期数据一致）。
+
+### 8.6 事故记录与修复（2026-09-01 11:46）
+
+现象：用户实机突然无法输入，TSF 日志大量 `skip recovery: manual exit marked`。
+根因：沙盒冒烟的 `/q` 写入的 manual-exit 标记文件路径**未按命名空间隔离**
+（管道/互斥量已隔离，此文件漏了），污染了真实服务的自动恢复判断。
+修复：`ServiceManualExitFlagPath()` 并入 `IpcNamespaceSuffix()`；回归冒烟确认
+沙盒 `/q` 只写 `weasel-service-manual-exit<ns>.flag`，默认命名空间零接触。
+教训：新增任何跨进程的全局路径（文件/注册表/事件）都必须过一遍命名空间
+隔离审查。

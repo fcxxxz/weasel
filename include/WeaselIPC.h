@@ -110,8 +110,24 @@ inline DWORD ServiceStartupNotification(bool restart_requested,
              : WEASEL_IPC_SERVICE_NOTIFICATION_NONE;
 }
 
+// Optional namespace suffix so test/automation binaries can run their own
+// server and pipe next to the user's live service without stealing or
+// blocking it (set WEASEL_IPC_NAMESPACE, e.g. "=test").
+inline std::wstring IpcNamespaceSuffix() {
+  WCHAR value[64] = {0};
+  DWORD length = GetEnvironmentVariableW(L"WEASEL_IPC_NAMESPACE", value,
+                                         static_cast<DWORD>(_countof(value)));
+  return (length > 0 && length < _countof(value)) ? std::wstring(value)
+                                                  : std::wstring();
+}
+
 inline fs::path ServiceManualExitFlagPath() {
-  return WeaselLogPath() / L"weasel-service-manual-exit.flag";
+  // Namespaced like the pipe and instance mutex: a sandbox run quitting its
+  // own server must not block recovery of the user's real service.
+  std::wstring name = L"weasel-service-manual-exit";
+  name += IpcNamespaceSuffix();
+  name += L".flag";
+  return WeaselLogPath() / name;
 }
 
 inline void MarkServiceManualExit() {
@@ -160,17 +176,6 @@ inline bool ShouldAutoRecoverService() {
 
 inline LPCWSTR ServiceExecutableName() {
   return L"WeaselServer.exe";
-}
-
-// Optional namespace suffix so test/automation binaries can run their own
-// server and pipe next to the user's live service without stealing or
-// blocking it (set WEASEL_IPC_NAMESPACE, e.g. "=test").
-inline std::wstring IpcNamespaceSuffix() {
-  WCHAR value[64] = {0};
-  DWORD length = GetEnvironmentVariableW(L"WEASEL_IPC_NAMESPACE", value,
-                                         static_cast<DWORD>(_countof(value)));
-  return (length > 0 && length < _countof(value)) ? std::wstring(value)
-                                                  : std::wstring();
 }
 
 inline std::wstring ServiceInstanceMutexName() {
