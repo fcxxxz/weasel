@@ -88,13 +88,13 @@ int realseat_main(int iterations, int churn) {
   double session_ms = (t1.QuadPart - t0.QuadPart) * 1000.0 / freq.QuadPart;
   client.FocusIn();
 
-  const wchar_t* seq = L"nihao ";
+  const UINT seq[] = {'N', 'I', 'H', 'A', 'O', VK_SPACE};
   double first_key_us = -1.0;
   std::vector<double> us;
-  us.reserve((size_t)iterations * 6);
+  us.reserve((size_t)iterations * _countof(seq));
   for (int i = 0; i < iterations; ++i) {
-    for (const wchar_t* p = seq; *p; ++p) {
-      weasel::KeyEvent ev((UINT)*p, 0);
+    for (UINT key : seq) {
+      weasel::KeyEvent ev(key, 0);
       QueryPerformanceCounter(&t0);
       client.ProcessKeyEvent(ev);
       QueryPerformanceCounter(&t1);

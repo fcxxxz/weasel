@@ -91,6 +91,9 @@ class WeaselPanel {
 
   int m_candidateCount;
   int m_lastCandidateCount = 0;
+  // size waiting to be applied when the panel becomes visible
+  bool m_hasPendingResize = false;
+  CSize m_pendingSize{0, 0};
   int m_hoverIndex = -1;
   bool hide_candidates;
 

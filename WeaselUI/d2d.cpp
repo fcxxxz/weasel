@@ -313,10 +313,12 @@ void D2D::OnResize(UINT width, UINT height) {
                                      bitmap.ReleaseAndGetAddressOf()));
   // Point the device context to the new bitmap for rendering
   dc->SetTarget(bitmap.Get());
-  // Update DirectComposition target and visual
-  HR(visual->SetContent(swapChain.Get()));
-  HR(target->SetRoot(visual.Get()));
-  HR(dcompDevice->Commit());
+  // NOTE: no DirectComposition rebind here. The visual already references
+  // this swap chain object and picks up the resized buffers on the next
+  // Present; re-issuing SetContent/SetRoot and Commit on every resize makes
+  // DWM allocate a fresh cross-process redirect pair each time (two kernel
+  // handles leaked per keystroke-sized resize, measured) and the extra
+  // cross-process Commit shows up as millisecond tail latency.
 }
 
 std::vector<std::wstring> ws_split(const std::wstring& in,

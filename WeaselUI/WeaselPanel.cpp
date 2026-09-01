@@ -145,6 +145,13 @@ bool WeaselPanel::IsCountingDown() const {
 }
 
 void WeaselPanel::ShowWindow(int nCmdShow) {
+  if (nCmdShow != SW_HIDE && m_hasPendingResize && m_layout) {
+    // apply the resize deferred while the panel was hidden
+    m_hasPendingResize = false;
+    SetWindowPos(m_hWnd, 0, 0, 0, m_pendingSize.cx, m_pendingSize.cy,
+                 SWP_NOACTIVATE | SWP_NOMOVE | SWP_NOZORDER | SWP_NOREDRAW);
+    m_pD2D->OnResize(m_pendingSize.cx, m_pendingSize.cy);
+  }
   ::ShowWindow(m_hWnd, nCmdShow);
   if (m_pD2D) {
     if (nCmdShow != SW_HIDE) {
@@ -226,8 +233,17 @@ void WeaselPanel::MoveTo(RECT rc) {
 
 void WeaselPanel::_ResizeWindow() {
   CSize& size = m_layout->GetContentSize();
-  // Refresh() runs on every keystroke; skip the resize and the swapchain
-  // buffer rebuild it triggers when the window already has this size.
+  // Resizing a hidden window is invisible to everyone, and every real
+  // swap-chain resize strands the previous buffer pair: DWM keeps
+  // references through the bound visual and a hidden window never presents,
+  // so the old buffers are never consumed (measured: 2 kernel handles per
+  // resize, unbounded growth while typing). Defer the work to the next
+  // show instead.
+  if (!::IsWindowVisible(m_hWnd)) {
+    m_hasPendingResize = true;
+    m_pendingSize = size;
+    return;
+  }
   RECT rc{};
   if (::GetWindowRect(m_hWnd, &rc) && rc.right - rc.left == size.cx &&
       rc.bottom - rc.top == size.cy)
@@ -500,10 +516,7 @@ void WeaselPanel::DoPaint() {
     return;
   }
   // Make the swap chain available to the composition engine.
-  // SyncInterval 0: never wait for a vblank before presenting - a keystroke-
-  // driven candidate window should show the newest frame immediately; waiting
-  // up to a full vblank (8ms @ 120Hz) per frame reads as typing lag.
-  HRESULT hrPresent = m_pD2D->swapChain->Present(0, 0);
+  HRESULT hrPresent = m_pD2D->swapChain->Present(1, 0);
   if (hrPresent == DXGI_ERROR_DEVICE_REMOVED ||
       hrPresent == DXGI_ERROR_DEVICE_RESET) {
     DEBUG << "Device lost during Present: " << HRESULTToString(hrPresent);
