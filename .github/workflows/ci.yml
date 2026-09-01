@@ -83,8 +83,8 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          # 钉住 librime 版本以保证构建可复现；升级时改这里（本地需同步跑 get-rime.ps1 -use dev -tag <版本>）
-          .\get-rime.ps1 -use dev -tag 1.17.0
+          # 浮动引用：始终拉取 librime 最新正式版（不钉版本）
+          .\get-rime.ps1 -use dev
 
       - name: Build data
         shell: pwsh
@@ -126,9 +126,11 @@ jobs:
             .\output\archives\weasel*.exe
             .\output\archives\debug_symbols.7z
 
-      # 本仓库（非 rime/fxliang 上游）每次推送 master 都更新滚动 release
+      # 本仓库（非 rime/fxliang 上游）推送 master 时自动出包。
+      # 发布开关：仓库变量 ENABLE_AUTO_RELEASE=1 时才挂 release（默认关闭，
+      # 设置方式：gh variable set ENABLE_AUTO_RELEASE --body 1）
       - name: Create rolling release
-        if: ${{ github.repository != 'rime/weasel' && github.repository != 'fxliang/weasel' && github.ref == 'refs/heads/master' && matrix.variant == 'msbuild' }}
+        if: ${{ github.repository != 'rime/weasel' && github.repository != 'fxliang/weasel' && github.ref == 'refs/heads/master' && matrix.variant == 'msbuild' && vars.ENABLE_AUTO_RELEASE == '1' }}
         uses: 'marvinpinto/action-automatic-releases@latest'
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
