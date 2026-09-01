@@ -31,6 +31,10 @@ class PipeChannelBase {
      event). */
   static const DWORD kClientIoTimeoutMs = 500;
   static const DWORD kClientFocusTimeoutMs = 25;
+  // First session on a cold server pays full schema-state load (measured
+  // 900ms+ with a large custom schema); login is once per app focus, so a
+  // generous failure cap costs nothing in perceived latency.
+  static const DWORD kClientSessionStartTimeoutMs = 2000;
 
  protected:
   /* To ensure connection before operation */
@@ -152,9 +156,10 @@ class PipeChannel : public PipeChannelBase {
     return _ReceiveResponse(timeout_ms);
   }
 
-  // Best-effort transaction for UI-adjacent notifications. It never waits for
-  // a busy server and drops the request if the bounded I/O cannot complete.
-  bool TryTransact(Msg& msg, _TyRes* result) {
+  // Best-effort transaction for UI-adjacent notifications. It never waits
+  // long for a busy server and drops the request if the bounded I/O cannot
+  // complete; reliable commands (e.g. START_SESSION) pass a larger cap.
+  bool TryTransact(Msg& msg, _TyRes* result, DWORD timeout_ms = kClientFocusTimeoutMs) {
     if (!result)
       return false;
     HANDLE* phandle = _GetPipeHandle();
@@ -163,8 +168,8 @@ class PipeChannel : public PipeChannelBase {
       return false;
     }
     try {
-      _Send(*phandle, msg, kClientFocusTimeoutMs);
-      *result = _ReceiveResponse(kClientFocusTimeoutMs);
+      _Send(*phandle, msg, timeout_ms);
+      *result = _ReceiveResponse(timeout_ms);
       return true;
     } catch (...) {
       _FinalizePipe(*phandle);
@@ -197,7 +202,12 @@ class PipeChannel : public PipeChannelBase {
   }
 
  protected:
-  void _Send(HANDLE pipe, Msg& msg, DWORD timeout_ms = INFINITE) {
+  // `retry_reconnect` suits client use: a fresh pipe is opened and the write
+  // is retried. A server responding on an accepted pipe must pass false - a
+  // failed write means the client is gone, and _Reconnect() here would make
+  // the server connect to its own listener, leaking the accepting worker on a
+  // self-connection that never closes.
+  void _Send(HANDLE pipe, Msg& msg, DWORD timeout_ms = INFINITE, bool retry_reconnect = true) {
     auto ctx = _GetContext();
     char* pbuff = ctx->buffer.get();
     DWORD lwritten = 0;
@@ -214,12 +224,16 @@ class PipeChannel : public PipeChannelBase {
     if (data_sz > buff_size)
       data_sz = buff_size;
 
-    try {
+    if (retry_reconnect) {
+      try {
+        _WritePipe(pipe, data_sz, pbuff, timeout_ms);
+      } catch (...) {
+        _Reconnect();
+        // _Reconnect() closed `pipe` and opened a new handle; retry on that one
+        _WritePipe(*_GetPipeHandle(), data_sz, pbuff, timeout_ms);
+      }
+    } else {
       _WritePipe(pipe, data_sz, pbuff, timeout_ms);
-    } catch (...) {
-      _Reconnect();
-      // _Reconnect() closed `pipe` and opened a new handle; retry on that one
-      _WritePipe(*_GetPipeHandle(), data_sz, pbuff, timeout_ms);
     }
     ClearBufferStream();
   }

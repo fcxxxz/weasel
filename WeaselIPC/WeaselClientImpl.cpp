@@ -384,13 +384,8 @@ namespace {
 // so keep the larger cap.
 DWORD _TimeoutForCommand(WEASEL_IPC_COMMAND msg, DWORD wParam) {
   switch (msg) {
-    case WEASEL_IPC_ECHO:
     case WEASEL_IPC_FOCUS_IN:
     case WEASEL_IPC_FOCUS_OUT:
-    case WEASEL_IPC_START_SESSION:
-    case WEASEL_IPC_END_SESSION:
-    case WEASEL_IPC_START_MAINTENANCE:
-    case WEASEL_IPC_END_MAINTENANCE:
     case WEASEL_IPC_UPDATE_INPUT_POS:
     case WEASEL_IPC_TRAY_COMMAND:
       return PipeChannelBase::kClientFocusTimeoutMs;
@@ -399,6 +394,15 @@ DWORD _TimeoutForCommand(WEASEL_IPC_COMMAND msg, DWORD wParam) {
       // keystroke; keep real keys on the reliable compose-path cap
       return wParam == 0 ? PipeChannelBase::kClientFocusTimeoutMs
                          : PipeChannelBase::kClientIoTimeoutMs;
+    case WEASEL_IPC_START_SESSION:
+      // The first session on a cold server loads schema state (measured
+      // 900ms+ with a full custom schema); too small a cap here aborts the
+      // login and leaves the server writing its response to a dead pipe.
+      return PipeChannelBase::kClientSessionStartTimeoutMs;
+    case WEASEL_IPC_ECHO:
+    case WEASEL_IPC_END_SESSION:
+    case WEASEL_IPC_START_MAINTENANCE:
+    case WEASEL_IPC_END_MAINTENANCE:
     default:
       return PipeChannelBase::kClientIoTimeoutMs;
   }
@@ -423,7 +427,7 @@ bool ClientImpl::_TrySendMessage(WEASEL_IPC_COMMAND Msg,
   if (!result)
     return false;
   PipeMessage req{Msg, wParam, lParam};
-  return channel.TryTransact(req, result);
+  return channel.TryTransact(req, result, _TimeoutForCommand(Msg, wParam));
 }
 
 Client::Client() : m_pImpl(new ClientImpl()) {}

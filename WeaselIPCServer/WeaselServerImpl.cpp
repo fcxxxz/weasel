@@ -558,13 +558,25 @@ PipeServer::ServerRunner PipeServer::GetServerRunner(
 }
 
 void PipeServer::_ProcessPipeThread(HANDLE pipe, ServerHandler const& handler) {
+  const auto h = reinterpret_cast<uintptr_t>(pipe);
+  WeaselDebugLog(L"WeaselIPCServer", L"worker start handle=" + std::to_wstring(h));
   try {
     for (;;) {
       Res msg;
       _Receive(pipe, &msg, sizeof(msg));
-      handler(msg, [this, pipe](Msg resp) { _Send(pipe, resp); });
+      handler(msg, [this, pipe](Msg resp) {
+        // No reconnect-retry: a failed write means the client disconnected;
+        // reconnecting here would connect the server to its own listener and
+        // leak the accepting worker on a self-connection that never closes.
+        _Send(pipe, resp, INFINITE, false);
+      });
     }
+  } catch (DWORD ex) {
+    WeaselDebugLog(L"WeaselIPCServer",
+                   L"worker exit code=" + std::to_wstring(ex) + L" handle=" + std::to_wstring(h));
+    _FinalizePipe(pipe);
   } catch (...) {
+    WeaselDebugLog(L"WeaselIPCServer", L"worker exit code=unknown handle=" + std::to_wstring(h));
     _FinalizePipe(pipe);
   }
 }
