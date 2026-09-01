@@ -24,8 +24,10 @@ int client_main();
 int bench_main(int iterations, int threads);
 int server_main();
 int unit_main();
+int realseat_main(int iterations, int churn);
 
-// usage: TestWeaselIPC.exe [/start | /stop | /console]
+// usage: TestWeaselIPC.exe [/start | /stop | /console | /unit | /bench |
+//                          /realseat <iterations> <churn_sessions>]
 
 int _tmain(int argc, _TCHAR* argv[]) {
   if (argc == 1)  // no args
@@ -50,9 +52,84 @@ int _tmain(int argc, _TCHAR* argv[]) {
     int iterations = argc > 2 ? _wtoi(argv[2]) : 2000;
     int threads = argc > 3 ? _wtoi(argv[3]) : 4;
     return bench_main(iterations, threads);
+  } else if (argc > 1 && !wcscmp(L"/realseat", argv[1])) {
+    int iterations = argc > 2 ? _wtoi(argv[2]) : 300;
+    int churn = argc > 3 ? _wtoi(argv[3]) : 10;
+    return realseat_main(iterations, churn);
   }
 
   return -1;
+}
+
+namespace {
+double percentile(std::vector<double> v, double p) {
+  if (v.empty())
+    return 0.0;
+  std::sort(v.begin(), v.end());
+  size_t idx = (size_t)(p * (v.size() - 1) + 0.5);
+  return v[(std::min)(idx, v.size() - 1)];
+}
+}  // namespace
+
+// /realseat <iterations> <churn>: 连接默认命名空间的真实服务器（引擎+UI 全
+// 走真实路径），测会话建立、首键、持续按键延迟与会话churn
+int realseat_main(int iterations, int churn) {
+  weasel::Client client;
+  if (!client.TryConnect()) {
+    std::wcerr << L"RESULT server=unreachable" << std::endl;
+    return 1;
+  }
+  LARGE_INTEGER freq, t0, t1;
+  QueryPerformanceFrequency(&freq);
+
+  QueryPerformanceCounter(&t0);
+  client.StartSession();
+  QueryPerformanceCounter(&t1);
+  double session_ms = (t1.QuadPart - t0.QuadPart) * 1000.0 / freq.QuadPart;
+  client.FocusIn();
+
+  const wchar_t* seq = L"nihao ";
+  double first_key_us = -1.0;
+  std::vector<double> us;
+  us.reserve((size_t)iterations * 6);
+  for (int i = 0; i < iterations; ++i) {
+    for (const wchar_t* p = seq; *p; ++p) {
+      weasel::KeyEvent ev((UINT)*p, 0);
+      QueryPerformanceCounter(&t0);
+      client.ProcessKeyEvent(ev);
+      QueryPerformanceCounter(&t1);
+      double d = (t1.QuadPart - t0.QuadPart) * 1e6 / freq.QuadPart;
+      if (first_key_us < 0.0)
+        first_key_us = d;
+      else
+        us.push_back(d);
+    }
+  }
+  client.EndSession();
+
+  std::vector<double> churn_ms;
+  for (int i = 0; i < churn; ++i) {
+    QueryPerformanceCounter(&t0);
+    client.StartSession();
+    QueryPerformanceCounter(&t1);
+    churn_ms.push_back((t1.QuadPart - t0.QuadPart) * 1000.0 / freq.QuadPart);
+    client.FocusIn();
+    weasel::KeyEvent ev((UINT)L'n', 0);
+    client.ProcessKeyEvent(ev);
+    client.EndSession();
+  }
+
+  printf(
+      "RESULT session_first_ms=%.3f first_key_ms=%.3f keys=%zu p50_us=%.1f "
+      "p95_us=%.1f p99_us=%.1f max_us=%.1f churn=%d churn_p50_ms=%.3f "
+      "churn_max_ms=%.3f\n",
+      session_ms, first_key_us / 1000.0, us.size(), percentile(us, 0.50),
+      percentile(us, 0.95), percentile(us, 0.99),
+      us.empty() ? 0.0 : *std::max_element(us.begin(), us.end()), churn,
+      percentile(churn_ms, 0.50),
+      churn_ms.empty() ? 0.0
+                       : *std::max_element(churn_ms.begin(), churn_ms.end()));
+  return 0;
 }
 
 int unit_main() {
