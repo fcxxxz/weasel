@@ -146,6 +146,24 @@ jobs:
           automatic_release_tag: latest
           prerelease: true
           title: "Weasel ${{ env.git_ref_name }}"
+          body: |
+            小狼毫个人优化构建（滚动更新，本页始终是最新版本）
+
+            **下载**：`weasel-*-installer.exe` 为 NSIS 安装程序（Windows 8.1 ~ 11）；
+            `debug_symbols.7z` 为调试符号，仅崩溃分析时需要，日常无需下载。
+
+            **安装前请先退出正在运行的旧版小狼毫**（托盘图标右键 » 退出）。
+
+            本构建基于 rime/weasel 官方版与 fxliang/weasel（pb 分支）深度整合，主要差异：
+
+            - 修复会话级线程与内存泄漏（IPC 自连接泄漏，修复前每会话泄漏 1 线程 + 8 句柄）
+            - 服务启动时预热引擎会话与渲染管线，开机后首次打字无冷启动卡顿
+            - 移除官方自动升级通道，不会被官方发布的新版本覆盖
+            - 新增字体设置对话框、样式实时预览、高 DPI 对话框
+            - IPC 分级超时，按键往返 p50 约 19µs
+
+            完整说明见仓库 [README](https://github.com/fcxxxz/weasel) 与
+            [docs/upstream-comparison-2026-09.md](https://github.com/fcxxxz/weasel/blob/master/docs/upstream-comparison-2026-09.md)。
           files: |
             ./output/archives/weasel*.exe
             ./output/archives/debug_symbols.7z
