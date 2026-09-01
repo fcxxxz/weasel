@@ -48,6 +48,12 @@ class PipeChannelBase {
   /* Try to connect for one time */
   HANDLE _TryConnect();
   size_t _WritePipe(HANDLE p, size_t s, char* b, DWORD timeout_ms = INFINITE);
+  /* Blocking I/O for server-side accepted pipes (created without
+   * FILE_FLAG_OVERLAPPED). Worker threads are disposable, so the server has
+   * no reason to pay the overlapped completion-event hop on every request.
+   * The client keeps overlapped I/O with timeouts for freeze protection. */
+  size_t _WritePipeSync(HANDLE p, size_t s, char* b);
+  void _ReceiveSync(HANDLE pipe, LPVOID msg, size_t rec_len);
   void _FinalizePipe(HANDLE& p);
   void _Receive(HANDLE pipe,
                 LPVOID msg,
@@ -92,6 +98,8 @@ class PipeChannelBase {
   mutable boost::thread_specific_ptr<ChannelContext> context;
   // Thread-local overlapped I/O event
   mutable boost::thread_specific_ptr<HANDLE> io_event_ptr;
+  // true when this channel serves accepted pipes with blocking I/O
+  bool sync_io_ = false;
 
  private:
   /* Security attributes */

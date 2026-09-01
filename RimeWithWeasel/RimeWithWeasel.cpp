@@ -101,6 +101,13 @@ void RimeWithWeaselHandler::_Setup() {
 }
 
 void RimeWithWeaselHandler::Initialize() {
+  // AddSession -> EndMaintenance can call Initialize() again while a
+  // keepalive from the first run still exists; destroy it first or the
+  // handle below would overwrite and leak that engine session.
+  if (m_keepalive_session) {
+    rime_api->destroy_session(m_keepalive_session);
+    m_keepalive_session = 0;
+  }
   m_disabled = _IsDeployerRunning();
   if (m_disabled) {
     return;
@@ -294,8 +301,10 @@ BOOL RimeWithWeaselHandler::ProcessKeyEvent(KeyEvent keyEvent,
   SessionStatus& session_status = get_session_status(ipc_id);
   RimeSessionId session_id = session_status.session_id;
   bool was_composing = !!session_status.status.is_composing;
+
   Bool handled = rime_api->process_key(session_id, keyEvent.keycode,
                                        expand_ibus_modifier(keyEvent.mask));
+
   // vim_mode when keydown only
   if (!handled && !(keyEvent.mask & ibus::Modifier::RELEASE_MASK)) {
     bool isVimBackInCommandMode =
@@ -313,6 +322,7 @@ BOOL RimeWithWeaselHandler::ProcessKeyEvent(KeyEvent keyEvent,
   RimeUiStatusSnapshot status_snapshot;
   bool has_commit = false;
   _Respond(ipc_id, eat, &status_snapshot, &has_commit);
+
   _UpdateUI(ipc_id, &status_snapshot);
   m_active_session = ipc_id;
   bool is_composing = status_snapshot.has_status

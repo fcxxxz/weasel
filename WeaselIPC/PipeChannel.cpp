@@ -150,10 +150,39 @@ DWORD PipeChannelBase::_WaitIo(HANDLE pipe,
   return ERROR_SUCCESS;
 }
 
+size_t PipeChannelBase::_WritePipeSync(HANDLE pipe, size_t s, char* b) {
+  DWORD lwritten = 0;
+  if (!::WriteFile(pipe, b, static_cast<DWORD>(s), &lwritten, NULL) ||
+      lwritten == 0) {
+    _ThrowLastError;
+  }
+  return lwritten;
+}
+
+void PipeChannelBase::_ReceiveSync(HANDLE pipe, LPVOID msg, size_t rec_len) {
+  DWORD lread = 0;
+  BOOL success =
+      ::ReadFile(pipe, msg, static_cast<DWORD>(rec_len), &lread, NULL);
+  if (!success && ::GetLastError() != ERROR_MORE_DATA) {
+    _ThrowLastError;
+  }
+  if (!success) {  // ERROR_MORE_DATA: message body follows in the buffer
+    auto ctx = _GetContext();
+    memset(ctx->buffer.get(), 0, buff_size);
+    if (!::ReadFile(pipe, ctx->buffer.get(), static_cast<DWORD>(buff_size),
+                    &lread, NULL)) {
+      _ThrowLastError;
+    }
+  }
+  _GetContext()->has_body = false;
+}
+
 size_t PipeChannelBase::_WritePipe(HANDLE pipe,
                                    size_t s,
                                    char* b,
                                    DWORD timeout_ms) {
+  if (sync_io_)
+    return _WritePipeSync(pipe, s, b);
   OverlappedOp op(_GetIoEvent());
   BOOL success = ::WriteFile(pipe, b, static_cast<DWORD>(s), NULL, &op.ov);
   DWORD lwritten = 0;
@@ -177,6 +206,10 @@ void PipeChannelBase::_Receive(HANDLE pipe,
                                LPVOID msg,
                                size_t rec_len,
                                DWORD timeout_ms) {
+  if (sync_io_) {
+    _ReceiveSync(pipe, msg, rec_len);
+    return;
+  }
   DWORD err;
   {
     OverlappedOp op(_GetIoEvent());
@@ -199,11 +232,21 @@ void PipeChannelBase::_Receive(HANDLE pipe,
 
 HANDLE PipeChannelBase::_ConnectServerPipe(std::wstring& pn) {
   HANDLE pipe =
-      CreateNamedPipe(pn.c_str(), PIPE_ACCESS_DUPLEX | FILE_FLAG_OVERLAPPED,
+      CreateNamedPipe(pn.c_str(),
+                      sync_io_ ? PIPE_ACCESS_DUPLEX
+                               : (PIPE_ACCESS_DUPLEX | FILE_FLAG_OVERLAPPED),
                       PIPE_TYPE_MESSAGE | PIPE_READMODE_MESSAGE | PIPE_WAIT,
                       PIPE_UNLIMITED_INSTANCES, buff_size, buff_size, 0, sa);
   if (pipe == INVALID_HANDLE_VALUE) {
     _ThrowLastError;
+  }
+  if (sync_io_) {
+    BOOL okn = ::ConnectNamedPipe(pipe, NULL);
+    if (!okn && ::GetLastError() != ERROR_PIPE_CONNECTED) {
+      ::CloseHandle(pipe);
+      _ThrowLastError;
+    }
+    return pipe;
   }
   OverlappedOp op(_GetIoEvent());
   BOOL ok = ::ConnectNamedPipe(pipe, &op.ov);

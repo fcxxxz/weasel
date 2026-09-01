@@ -528,7 +528,10 @@ void ServerImpl::HandlePipeMessage(PipeMessage pipe_msg, _Resp resp) {
 }
 
 PipeServer::PipeServer(std::wstring&& pn_cmd, SECURITY_ATTRIBUTES* s)
-    : PipeChannel(std::move(pn_cmd), s) {}
+    : PipeChannel(std::move(pn_cmd), s) {
+  // accepted pipes use blocking I/O; see PipeChannelBase::sync_io_
+  sync_io_ = true;
+}
 
 void PipeServer::Listen(ServerHandler const& handler) {
   for (;;) {

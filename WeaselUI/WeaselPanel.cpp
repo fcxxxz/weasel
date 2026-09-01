@@ -347,6 +347,15 @@ void WeaselPanel::Prewarm() {
   // throwaway draw cycle to pay driver and glyph-rasterization costs here
   // instead of on the first keystroke (upstream #1913/#1886).
   Refresh();
+  // _ResizeWindow deferred the swap-chain resize while hidden; apply it
+  // now so the warm-up rasterizes a realistic surface and the first real
+  // show does not pay ResizeBuffers itself.
+  if (m_hasPendingResize && m_layout) {
+    m_hasPendingResize = false;
+    SetWindowPos(m_hWnd, 0, 0, 0, m_pendingSize.cx, m_pendingSize.cy,
+                 SWP_NOACTIVATE | SWP_NOMOVE | SWP_NOZORDER | SWP_NOREDRAW);
+    m_pD2D->OnResize(m_pendingSize.cx, m_pendingSize.cy);
+  }
   DoPaint();
 }
 
@@ -516,7 +525,7 @@ void WeaselPanel::DoPaint() {
     return;
   }
   // Make the swap chain available to the composition engine.
-  HRESULT hrPresent = m_pD2D->swapChain->Present(1, 0);
+  HRESULT hrPresent = m_pD2D->swapChain->Present(0, 0);
   if (hrPresent == DXGI_ERROR_DEVICE_REMOVED ||
       hrPresent == DXGI_ERROR_DEVICE_RESET) {
     DEBUG << "Device lost during Present: " << HRESULTToString(hrPresent);
@@ -864,6 +873,12 @@ void WeaselPanel::_Reposition(bool adj) {
   GetWindowRect(m_hWnd, &rcWindow);
   int width = rcWindow.Width();
   int height = rcWindow.Height();
+  // while hidden the resize is deferred: clamp against the size the
+  // panel will actually show with, not the stale current one
+  if (m_hasPendingResize) {
+    width = m_pendingSize.cx;
+    height = m_pendingSize.cy;
+  }
   rcWorkArea.right -= width;
   rcWorkArea.bottom -= height;
   int x = m_inputPos.left;
