@@ -46,8 +46,14 @@ jobs:
       - name: Checkout last commit
         uses: actions/checkout@v4
         with:
-          submodules: true
+          submodules: false
           fetch-depth: 0
+
+      - name: Init plum submodule
+        shell: pwsh
+        run: git submodule update --init plum
+        # librime 子模块仅作版本引用（构建产物仍由 get-rime.ps1 拉取预编译版，
+        # 与上游 rime/weasel 的 CI 做法一致），CI 无需克隆其源码
 
       - name: Fetch all tags
         run: |
