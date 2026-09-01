@@ -991,8 +991,7 @@ bool RimeWithWeaselHandler::_Respond(WeaselSessionId ipc_id,
       // Re-serializing the candidate archive dominates this response body;
       // when the page did not change the client still holds the previous
       // list, so send it only when it differs from the last one.
-      if (!session_status.__synced ||
-          session_status.last_cinfo != cinfo) {
+      if (!session_status.__synced || session_status.last_cinfo != cinfo) {
         std::wstringstream ss;
         boost::archive::text_woarchive oa(ss);
 

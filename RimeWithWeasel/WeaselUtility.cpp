@@ -8,8 +8,8 @@ fs::path WeaselUserDataPath() {
   // effect only when explicitly set, so the live service and its registry
   // configuration stay untouched. Inherited by spawned deployer processes.
   WCHAR env_path[MAX_PATH] = {0};
-  DWORD env_len = GetEnvironmentVariableW(L"WEASEL_USER_DIR", env_path,
-                                          static_cast<DWORD>(_countof(env_path)));
+  DWORD env_len = GetEnvironmentVariableW(
+      L"WEASEL_USER_DIR", env_path, static_cast<DWORD>(_countof(env_path)));
   if (env_len > 0 && env_len < _countof(env_path) && env_path[0]) {
     return fs::path(env_path);
   }

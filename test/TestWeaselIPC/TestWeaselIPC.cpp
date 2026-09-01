@@ -477,11 +477,11 @@ static BenchStats Summarize(std::vector<double>& samples) {
     size_t i = static_cast<size_t>(q * (samples.size() - 1) + 0.5);
     return samples[(std::min)(i, samples.size() - 1)];
   };
-    s.min_us = samples.front();
+  s.min_us = samples.front();
   s.p50 = pick(0.50);
   s.p95 = pick(0.95);
   s.p99 = pick(0.99);
-    s.max_us = samples.back();
+  s.max_us = samples.back();
   double sum = 0;
   for (double v : samples)
     sum += v;
@@ -492,7 +492,8 @@ static BenchStats Summarize(std::vector<double>& samples) {
 static void Report(const char* name, const BenchStats& s) {
   std::cout << "BENCH " << name << " min_us=" << (long long)s.min_us
             << " p50_us=" << (long long)s.p50 << " p95_us=" << (long long)s.p95
-            << " p99_us=" << (long long)s.p99 << " max_us=" << (long long)s.max_us
+            << " p99_us=" << (long long)s.p99
+            << " max_us=" << (long long)s.max_us
             << " mean_us=" << (long long)s.mean << std::endl;
 }
 
@@ -580,13 +581,12 @@ int bench_main(int iterations, int threads) {
     w.join();
   const size_t ws_after = WorkingSetKB();
   std::cout << "BENCH threads=" << threads << " ws_before_kb=" << ws_before
-            << " ws_after_kb=" << ws_after << " delta_kb=" << (ws_after - ws_before)
-            << std::endl;
+            << " ws_after_kb=" << ws_after
+            << " delta_kb=" << (ws_after - ws_before) << std::endl;
 
   client.EndSession();
   return 0;
 }
-
 
 int console_main() {
   weasel::Client client;
@@ -655,7 +655,8 @@ class TestRequestHandler : public weasel::RequestHandler {
  public:
   TestRequestHandler() : m_counter(0) {
     std::cerr << "handler ctor." << std::endl;
-  }  virtual ~TestRequestHandler() {
+  }
+  virtual ~TestRequestHandler() {
     std::cerr << "handler dtor: " << m_counter << std::endl;
   }
   // Signatures must match RequestHandler exactly; UINT != WeaselSessionId
@@ -684,8 +685,8 @@ class TestRequestHandler : public weasel::RequestHandler {
                        EatLine eat) override {
     if (trace_enabled_)
       std::cerr << "ProcessKeyEvent: " << ipc_id
-                << " keycode: " << keyEvent.keycode << " mask: " << keyEvent.mask
-                << std::endl;
+                << " keycode: " << keyEvent.keycode
+                << " mask: " << keyEvent.mask << std::endl;
     eat(std::wstring(L"Greeting=Hello, 小狼毫.\n"));
     return TRUE;
   }
@@ -697,9 +698,8 @@ class TestRequestHandler : public weasel::RequestHandler {
 
 bool TestRequestHandler::trace_enabled_ = []() {
   WCHAR value[4] = {0};
-  DWORD length =
-      GetEnvironmentVariableW(L"WEASEL_TEST_TRACE", value,
-                              static_cast<DWORD>(_countof(value)));
+  DWORD length = GetEnvironmentVariableW(L"WEASEL_TEST_TRACE", value,
+                                         static_cast<DWORD>(_countof(value)));
   return length > 0 && value[0] != L'0';
 }();
 

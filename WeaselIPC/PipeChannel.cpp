@@ -40,10 +40,7 @@ void CloseIoEvent(HANDLE* event_handle) {
 PipeChannelBase::PipeChannelBase(std::wstring&& pn_cmd,
                                  size_t bs = 4 * 1024,
                                  SECURITY_ATTRIBUTES* s = NULL)
-    : pname(pn_cmd),
-      buff_size(bs),
-      sa(s),
-      io_event_ptr(&CloseIoEvent) {};
+    : pname(pn_cmd), buff_size(bs), sa(s), io_event_ptr(&CloseIoEvent) {};
 
 PipeChannelBase::~PipeChannelBase() {
   // Thread-specific pointers are cleaned up automatically
@@ -182,7 +179,7 @@ void PipeChannelBase::_Receive(HANDLE pipe,
                                DWORD timeout_ms) {
   DWORD err;
   {
-  OverlappedOp op(_GetIoEvent());
+    OverlappedOp op(_GetIoEvent());
     BOOL success =
         ::ReadFile(pipe, msg, static_cast<DWORD>(rec_len), NULL, &op.ov);
     err = _WaitIo(pipe, op.ov, success, timeout_ms, NULL);
@@ -190,7 +187,7 @@ void PipeChannelBase::_Receive(HANDLE pipe,
   if (err == ERROR_MORE_DATA) {
     auto ctx = _GetContext();
     memset(ctx->buffer.get(), 0, buff_size);
-  OverlappedOp op(_GetIoEvent());
+    OverlappedOp op(_GetIoEvent());
     BOOL success = ::ReadFile(pipe, ctx->buffer.get(),
                               static_cast<DWORD>(buff_size), NULL, &op.ov);
     err = _WaitIo(pipe, op.ov, success, timeout_ms, NULL);

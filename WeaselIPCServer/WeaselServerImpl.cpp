@@ -559,7 +559,8 @@ PipeServer::ServerRunner PipeServer::GetServerRunner(
 
 void PipeServer::_ProcessPipeThread(HANDLE pipe, ServerHandler const& handler) {
   const auto h = reinterpret_cast<uintptr_t>(pipe);
-  WeaselDebugLog(L"WeaselIPCServer", L"worker start handle=" + std::to_wstring(h));
+  WeaselDebugLog(L"WeaselIPCServer",
+                 L"worker start handle=" + std::to_wstring(h));
   try {
     for (;;) {
       Res msg;
@@ -572,11 +573,13 @@ void PipeServer::_ProcessPipeThread(HANDLE pipe, ServerHandler const& handler) {
       });
     }
   } catch (DWORD ex) {
-    WeaselDebugLog(L"WeaselIPCServer",
-                   L"worker exit code=" + std::to_wstring(ex) + L" handle=" + std::to_wstring(h));
+    WeaselDebugLog(L"WeaselIPCServer", L"worker exit code=" +
+                                           std::to_wstring(ex) + L" handle=" +
+                                           std::to_wstring(h));
     _FinalizePipe(pipe);
   } catch (...) {
-    WeaselDebugLog(L"WeaselIPCServer", L"worker exit code=unknown handle=" + std::to_wstring(h));
+    WeaselDebugLog(L"WeaselIPCServer",
+                   L"worker exit code=unknown handle=" + std::to_wstring(h));
     _FinalizePipe(pipe);
   }
 }

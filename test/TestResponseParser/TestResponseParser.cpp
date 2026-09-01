@@ -69,10 +69,11 @@ void test_4() {
     boost::archive::text_woarchive oa(oss);
     oa << sent;
   }
-  const std::wstring resp = std::wstring(L"action=commit,ctx\n"
-                                         L"ctx.preedit=候選乙=3.14\n"
-                                         L"ctx.preedit.cursor=0,3\n"
-                                         L"ctx.cand=") +
+  const std::wstring resp = std::wstring(
+                                L"action=commit,ctx\n"
+                                L"ctx.preedit=候選乙=3.14\n"
+                                L"ctx.preedit.cursor=0,3\n"
+                                L"ctx.cand=") +
                             oss.str() + L"\n";
   std::wstring commit;
   weasel::Context ctx;

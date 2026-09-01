@@ -348,9 +348,9 @@ inline bool WeaselOdsLogEnabled() {
   (DebugStream() << "[" << current_time() << " " << __FILE__ << ":" \
                  << __LINE__ << "] ")
 
-#define LOG(x)                                                       \
+#define LOG(x)                                                        \
   for (bool weasel_log_once = WeaselOdsLogEnabled(); weasel_log_once; \
-       weasel_log_once = false)                                      \
+       weasel_log_once = false)                                       \
   DEBUG << #x << ": "
 #define DLOG(x) LOG(x)
 

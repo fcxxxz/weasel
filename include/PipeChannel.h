@@ -159,7 +159,9 @@ class PipeChannel : public PipeChannelBase {
   // Best-effort transaction for UI-adjacent notifications. It never waits
   // long for a busy server and drops the request if the bounded I/O cannot
   // complete; reliable commands (e.g. START_SESSION) pass a larger cap.
-  bool TryTransact(Msg& msg, _TyRes* result, DWORD timeout_ms = kClientFocusTimeoutMs) {
+  bool TryTransact(Msg& msg,
+                   _TyRes* result,
+                   DWORD timeout_ms = kClientFocusTimeoutMs) {
     if (!result)
       return false;
     HANDLE* phandle = _GetPipeHandle();
@@ -207,7 +209,10 @@ class PipeChannel : public PipeChannelBase {
   // failed write means the client is gone, and _Reconnect() here would make
   // the server connect to its own listener, leaking the accepting worker on a
   // self-connection that never closes.
-  void _Send(HANDLE pipe, Msg& msg, DWORD timeout_ms = INFINITE, bool retry_reconnect = true) {
+  void _Send(HANDLE pipe,
+             Msg& msg,
+             DWORD timeout_ms = INFINITE,
+             bool retry_reconnect = true) {
     auto ctx = _GetContext();
     char* pbuff = ctx->buffer.get();
     DWORD lwritten = 0;
