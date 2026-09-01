@@ -14,7 +14,9 @@ Configurator::~Configurator() {}
 
 void Configurator::Store(Deserializer::KeyType const& key,
                          std::wstring const& value) {
-  if (!m_pTarget->p_context || key.size() < 2)
+  // 配置字段不依赖 Context；此前误判 p_context 导致纯 config 响应
+  // （如 OnSetThreadFocus 传 context=nullptr、config=&_config）被整体丢弃
+  if (!m_pTarget->p_config || key.size() < 2)
     return;
   bool bool_value = (!value.empty() && value != L"0");
   if (key[1] == L"inline_preedit") {

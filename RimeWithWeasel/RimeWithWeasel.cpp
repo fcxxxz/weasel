@@ -151,6 +151,11 @@ void RimeWithWeaselHandler::Initialize() {
   // gap pays the full ~900ms schema/lua/dictionary load again (measured;
   // create_session costs ~190ms while another session is alive).
   m_keepalive_session = rime_api->create_session();
+  if (!m_keepalive_session) {
+    // 保活会话创建失败不影响服务可用性，但常驻预热会静默失效，
+    // 记录日志便于排查首个客户端登录变慢的问题
+    WeaselDebugLog(L"RimeWithWeasel", L"keepalive session create failed");
+  }
 }
 
 void RimeWithWeaselHandler::Finalize() {
@@ -186,6 +191,10 @@ DWORD RimeWithWeaselHandler::AddSession(LPWSTR buffer, EatLine eat) {
       return 0;
   }
   RimeSessionId session_id = (RimeSessionId)rime_api->create_session();
+  if (!session_id) {
+    DLOG(ERROR) << "AddSession: engine create_session failed";
+    return 0;
+  }
   if (m_global_ascii_mode) {
     for (const auto& pair : m_session_status_map) {
       if (pair.first) {
@@ -990,21 +999,14 @@ bool RimeWithWeaselHandler::_Respond(WeaselSessionId ipc_id,
       }
     }
     if (has_candidates) {
-      // Re-serializing the candidate archive dominates this response body;
-      // when the page did not change the client still holds the previous
-      // list, so send it only when it differs from the last one.
-      if (!session_status.__synced || session_status.last_cinfo != cinfo) {
-        std::wstringstream ss;
-        boost::archive::text_woarchive oa(ss);
-
-        oa << cinfo;
-
-        auto s = ss.str();
-        body.append(L"ctx.cand=").append(std::move(s)).append(L"\n");
-        session_status.last_cinfo = cinfo;
-      }
-    } else if (!session_status.last_cinfo.empty()) {
-      session_status.last_cinfo = weasel::CandidateInfo();
+      // TSF 端每个响应都新建空 Context 再整体覆盖 UI，候选归档必须每次
+      // 完整发送；按“未变化即省略”的增量会让客户端把候选覆盖为空，
+      // 表现为候选框每键闪现后消失
+      std::wstringstream ss;
+      boost::archive::text_woarchive oa(ss);
+      oa << cinfo;
+      auto s = ss.str();
+      body.append(L"ctx.cand=").append(std::move(s)).append(L"\n");
     }
     rime_api->free_context(&ctx);
   }
@@ -1014,12 +1016,14 @@ bool RimeWithWeaselHandler::_Respond(WeaselSessionId ipc_id,
   body.append(L"config.inline_preedit=")
       .append(std::to_wstring((int)session_status.style.inline_preedit))
       .append(L"\n");
+  // 客户端每个响应用新建的 Config 对象解码，此字段必须每次发送，
+  // 省略时默认值 false 会覆盖已同步的设置（语言栏被错误重建/显示）
+  body.append(L"config.hide_ime_mode_icon=")
+      .append(std::to_wstring((int)hide_ime_mode_icon))
+      .append(L"\n");
 
   // style
   if (!session_status.__synced) {
-    body.append(L"config.hide_ime_mode_icon=")
-        .append(std::to_wstring((int)hide_ime_mode_icon))
-        .append(L"\n");
     std::wstringstream ss;
     boost::archive::text_woarchive oa(ss);
     oa << session_status.style;

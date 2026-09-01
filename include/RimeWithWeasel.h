@@ -30,9 +30,6 @@ struct SessionStatus {
   RimeStatus status;
   bool __synced;
   RimeSessionId session_id;
-  // Last candidate payload handed to this session; unchanged lists are not
-  // re-serialized into responses.
-  weasel::CandidateInfo last_cinfo;
 };
 typedef std::map<DWORD, SessionStatus> SessionStatusMap;
 typedef DWORD WeaselSessionId;

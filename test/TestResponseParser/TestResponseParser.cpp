@@ -115,12 +115,66 @@ void test_5() {
   BOOST_TEST(ctx.cinfo.candies.empty());
 }
 
+void test_6() {
+  // A config-only response must update the config even when the caller
+  // passes no Context (e.g. OnSetThreadFocus). Regression guard: the
+  // Configurator used to bail out on !p_context and drop every field.
+  WCHAR resp[] =
+      L"action=config\n"
+      L"config.inline_preedit=1\n"
+      L"config.hide_ime_mode_icon=1\n";
+  DWORD len = wcslen(resp);
+  std::wstring commit;
+  weasel::Status status;
+  weasel::Config config;
+  weasel::ResponseParser parser(&commit, NULL, &status, &config);
+  parser(resp, len);
+  BOOST_TEST(config.inline_preedit == true);
+  BOOST_TEST(config.hide_ime_mode_icon == true);
+}
+
+void test_7() {
+  // The server must send the candidate archive on every composing response:
+  // the TSF client decodes each response into a fresh Context, so an omitted
+  // ctx.cand line means "empty candidates" on the client. Both consecutive
+  // responses here carry the same unchanged archive; decoding each into its
+  // own fresh Context must retain the candidates both times.
+  weasel::CandidateInfo sent;
+  sent.currentPage = 0;
+  sent.totalPages = 1;
+  sent.highlighted = 0;
+  sent.is_last_page = true;
+  sent.candies.push_back(weasel::Text(L"同一頁"));
+  std::wostringstream oss;
+  {
+    boost::archive::text_woarchive oa(oss);
+    oa << sent;
+  }
+  const std::wstring one =
+      std::wstring(L"action=ctx\nctx.preedit=tong\nctx.cand=") + oss.str() +
+      L"\n";
+
+  for (int round = 0; round < 2; ++round) {
+    std::wstring commit;
+    weasel::Context ctx;  // fresh Context per response, like DoEditSession
+    weasel::Status status;
+    weasel::ResponseParser parser(&commit, &ctx, &status);
+    std::vector<WCHAR> buf(one.begin(), one.end());
+    parser(buf.data(), (UINT)buf.size());
+    BOOST_ASSERT(1 == ctx.cinfo.candies.size());
+    BOOST_TEST(ctx.cinfo.candies[0].str == L"同一頁");
+    BOOST_TEST(ctx.preedit.str == L"tong");
+  }
+}
+
 int _tmain(int argc, _TCHAR* argv[]) {
   test_1();
   test_2();
   test_3();
   test_4();
   test_5();
+  test_6();
+  test_7();
 
   return boost::report_errors();
 }
