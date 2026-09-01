@@ -145,17 +145,19 @@ void RimeWithWeaselHandler::Initialize() {
   }
   m_last_schema_id.clear();
 
-  // Warm one engine session so schema/lua/dictionary state finishes loading
-  // during server startup: create_session on a cold engine costs 900ms+ with
-  // a large schema, which otherwise lands on the first client login.
-  {
-    RimeSessionId warmup_session = rime_api->create_session();
-    if (warmup_session)
-      rime_api->destroy_session(warmup_session);
-  }
+  // Warm one engine session and KEEP it alive for the lifetime of the
+  // service: the engine unloads schema state when its last session goes
+  // away, so without a resident session every client login after an idle
+  // gap pays the full ~900ms schema/lua/dictionary load again (measured;
+  // create_session costs ~190ms while another session is alive).
+  m_keepalive_session = rime_api->create_session();
 }
 
 void RimeWithWeaselHandler::Finalize() {
+  if (m_keepalive_session) {
+    rime_api->destroy_session(m_keepalive_session);
+    m_keepalive_session = 0;
+  }
   m_active_session = 0;
   m_disabled = true;
   m_session_status_map.clear();
