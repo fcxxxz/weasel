@@ -35,6 +35,9 @@ jobs:
   build:
     needs: lint
     runs-on: windows-2022
+    permissions:
+      # 创建滚动 release 需要写权限（仓库默认令牌权限为只读）
+      contents: write
     env:
       boost_version: 1.90.0
       BOOST_ROOT: ${{ github.workspace }}\deps\boost_1_90_0
