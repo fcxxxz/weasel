@@ -1,116 +1,57 @@
-﻿【小狼毫】輸入法
-================
+# 小狼毫输入法 · 个人优化构建
 
-基於 中州韻輸入法引擎／Rime Input Method Engine 等開源技術
+[![Release](https://img.shields.io/github/v/release/fcxxxz/weasel)](https://github.com/fcxxxz/weasel/releases/latest)
+[![CI](https://github.com/fcxxxz/weasel/actions/workflows/ci.yml/badge.svg)](https://github.com/fcxxxz/weasel/actions/workflows/ci.yml)
 
-式恕堂 版權所無
+基于 [rime/weasel](https://github.com/rime/weasel) 官方版与 [fxliang/weasel](https://github.com/fxliang/weasel) pb 分支深度整合的个人优化版，目标是高性能、低内存占用、无卡顿的 Windows Rime 前端。
 
-[![Download](https://img.shields.io/github/v/release/rime/weasel)](https://github.com/rime/weasel/releases/latest)
-[![Build status](https://github.com/rime/weasel/actions/workflows/commit-ci.yml/badge.svg)](https://github.com/rime/weasel/actions/workflows/commit-ci.yml)
-[![GitHub Tag](https://img.shields.io/github/tag/rime/weasel.svg)](https://github.com/rime/weasel)
+## 相对官方版的主要差异
 
-授權條款：GPLv3
+**性能与内存**
 
-項目主頁：https://rime.im
+- 修复会话级线程与内存泄漏：客户端超时导致服务端自连接，此前每会话泄漏 1 线程 + 约 8 句柄（+75MB/分钟）
+- IPC 命令分级超时与快速路径，按键往返 p50 约 19µs / p99 约 39µs
+- 服务启动时预热引擎会话与渲染管线，开机后第一次打字不再有冷启动卡顿
+- 候选串与输入位置去重传输，跳过尺寸/位置未变时的冗余窗口调用
 
-您可能還需要 RIME 用於其他操作系統的發行版：
+**行为**
 
-  * ibus-rime、fcitx5-rime 或 fcitx-rime 用於 Linux
-  * 【鼠鬚管】用於 macOS （64位）
+- 移除官方自动升级通道（WinSparkle）：不会被官方发布的新版本提示或覆盖
+- librime 钉版 1.17.0，构建可复现
 
-安裝輸入法
-----------
+**界面**
 
-本品適用於 Windows 8.1 ~ Windows 11
+- 新增字体设置对话框、带实时预览的样式编辑器（来自 pb 分支）
+- 高 DPI 感知的设置对话框，修复多 DPI 下的重复缩放问题
+- DirectComposition / D3D11 / D2D 渲染栈替代 GDI+，长驻宿主中不再拖慢 Chrome 等应用
 
-初次安裝時，安裝程序將顯示「安裝選項」對話框。
+完整的对比分析、基准数据与事故记录见 [docs/upstream-comparison-2026-09.md](docs/upstream-comparison-2026-09.md)。
 
-若要將【小狼毫】註冊到繁體中文（臺灣）鍵盤佈局，請在「輸入語言」欄選擇「中文（臺灣）」，再點擊「安裝」按鈕。
+## 下载与安装
 
-安裝完成後，仍可由開始菜單打開「安裝選項」更改輸入語言。
+每次推送 master 自动构建，安装包发布在本仓库 [Releases](https://github.com/fcxxxz/weasel/releases/latest)（`latest` 标签，滚动更新），包含 NSIS 安装程序与调试符号。
 
-使用輸入法
-----------
+适用于 Windows 8.1 ~ Windows 11。安装前请先退出正在运行的旧版小狼毫（托盘图标右键退出）。
 
-選取輸入法指示器菜單裏的【中】字樣圖標，開始用小狼毫寫字。
+## 使用
 
-可通過快捷鍵 <kbd>Ctrl+`</kbd> 或 <kbd>F4</kbd> 呼出方案選單、切換輸入方式。
+- 通过输入法指示器选择【中】图标开始使用
+- `Ctrl+`` 或 `F4` 呼出方案选单
+- 用户文件夹位于 `%AppData%\Rime`，修改方案或配置后需在开始菜单执行「重新部署」
+- 定制方法参考 [Rime 定制指南](https://github.com/rime/home/wiki/CustomizationGuide)
 
-定製輸入法
-----------
+## 从源码构建
 
-通過 開始菜單 » 小狼毫輸入法 訪問設定工具及常用位置。
+见 [INSTALL.md](INSTALL.md)。要点：Visual Studio 2022 + Boost + librime（`get-rime.ps1` 自动下载），`build.bat installer` 出安装包。
 
-用戶詞庫、配置文件位於 `%AppData%\Rime`，可通過菜單中的「用戶文件夾」打開。高水平玩家調教 Rime 輸入法常會用到。
+## 致谢与许可
 
-修改詞庫、配置文件後，須「重新部署」方可生效。
+本构建站在上游之上，感谢：
 
-定製 Rime 的方法，請參考 Wiki [《定製指南》](https://github.com/rime/home/wiki/CustomizationGuide)。如需定製 Weasel 獨有的樣式和行為，請參考本倉庫 [Wiki 頁面](https://github.com/rime/weasel/wiki)。
+- [rime/weasel](https://github.com/rime/weasel) 及其全体贡献者（佛振、邹旭、wishstudio、Prcuvu、nameoverflow、determ1ne 等）
+- [fxliang](https://github.com/fxliang) 的 pb 分支提供了 DirectComposition 渲染栈与大量设置界面改进
+- 图标设计 [Patricivs](https://github.com/Patricivs)
 
-致謝
-----
+引用的开源软件：Boost、librime、LevelDB、OpenCC、yaml-cpp、marisa-trie、curl、glog、7-Zip 等。
 
-### 輸入方案設計：
-
-  * 【朙月拼音】系列及【八股文】詞典
-    - 部分數據來源於 CC-CEDICT、Android 拼音、新酷音、opencc 等開源項目
-    - 維護者：佛振、瑾昀
-  * 【注音／地球拼音】
-    - 維護者：佛振、瑾昀
-  * 【倉頡五代】
-    - 發明人：朱邦復先生
-    - 碼表源自 www.chinesecj.com
-    - 構詞碼表作者：惜緣
-
-  【五笔】【粵拼】【上海／蘇州吳語】【中古漢語拼音】【國際音標】等衆多方案
-  不再以安裝包預裝形式提供。可由 <https://github.com/rime/plum> 下載安裝。
-
-### 程序設計：
-
-  * [佛振](https://github.com/lotem)
-  * [鄒旭](https://github.com/zouxu09)
-  * [Xiangyan Sun](https://github.com/wishstudio)
-  * [Prcuvu](https://github.com/Prcuvu)
-  * [nameoverflow](https://github.com/nameoverflow)
-  * [fxliang](https://github.com/fxliang)
-  * [Azuk 443](https://github.com/determ1ne)
-
-  查看更多 [代碼貢獻者](https://github.com/rime/weasel/graphs/contributors)
-
-### 美術：
-
-  * 圖標設計／[Patricivs](https://github.com/Patricivs)
-  * 配色方案／Aben、P1461、Patricivs、skoj、佛振、五磅兔
-
-### 本品引用了以下開源軟件：
-
-  * [Boost C++ Libraries](http://www.boost.org/) (Boost Software License)
-  * [curl](https://curl.haxx.se/) (MIT/X derivate license)
-  * [google-glog](https://github.com/google/glog) (BSD 3-Clause License)
-  * [Google Test](https://github.com/google/googletest) (BSD 3-Clause License)
-  * [LevelDB](https://github.com/google/leveldb) (BSD 3-Clause License)
-  * [librime](https://github.com/rime/librime) (BSD 3-Clause License)
-  * [marisa-trie](https://github.com/s-yata/marisa-trie) (BSD 2-Clause License, LGPL 2.1)
-  * [OpenCC / 開放中文轉換](https://github.com/BYVoid/OpenCC) (Apache License 2.0)
-  * [plum](https://github.com/rime/plum) (GNU Lesser General Public License v3.0)
-  * [yaml-cpp](https://github.com/jbeder/yaml-cpp) (MIT License)
-  * [7-Zip](https://www.7-zip.org) (GNU LGPLv2.1+ with unRAR restriction)
-
-問題與反饋
-----------
-
-發現程序有 bug，請到 GitHub 反饋
-<https://github.com/rime/weasel/issues>
-
-歡迎提交 pull request
-<https://github.com/rime/weasel/pulls>
-
-Rime 輸入法（不限於 Windows 平臺）功能、使用方法與配置相關的問題，請反饋到
-<https://github.com/rime/home/issues>
-
-聯繫方式
---------
-
-技術交流，歡迎光臨 [Rime 代碼之家](https://github.com/rime/home)，或致信 Rime 開發者 <rimeime@gmail.com>
-
-謝謝！
+许可证：**GPLv3**（继承自上游项目）。
