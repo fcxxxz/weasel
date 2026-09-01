@@ -161,7 +161,9 @@ uninst:
   CopyFiles $R1\data\*.* $TEMP\weasel-backup
 
 call_uninstaller:
-  ExecWait '"$R1\WeaselServer.exe" /stop'
+  ; 停旧版服务必须用 /quit：旧官方版二进制不认识 /stop，
+  ; 会把 /stop 当作启动指令成为新服务进程且永不退出，导致 ExecWait 卡死
+  ExecWait '"$R1\WeaselServer.exe" /quit'
   ExecWait '"$R1\WeaselSetup.exe" /u'
   ; Remove registry keys
   DeleteRegKey HKLM SOFTWARE\Rime
@@ -212,7 +214,7 @@ Section "Weasel"
   StrCpy $INSTDIR "${WEASEL_ROOT}"
 
   IfFileExists "$INSTDIR\WeaselServer.exe" 0 +2
-  ExecWait '"$INSTDIR\WeaselServer.exe" /stop'
+  ExecWait '"$INSTDIR\WeaselServer.exe" /quit'
 
   SetOverwrite try
   ; Set output path to the installation directory.
@@ -377,7 +379,7 @@ SectionEnd
 
 Section "Uninstall"
 
-  ExecWait '"$INSTDIR\WeaselServer.exe" /stop'
+  ExecWait '"$INSTDIR\WeaselServer.exe" /quit'
 
   ExecWait '"$INSTDIR\WeaselSetup.exe" /u'
 
