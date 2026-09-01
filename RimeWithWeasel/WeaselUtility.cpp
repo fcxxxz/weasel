@@ -4,6 +4,15 @@
 #include <WeaselUtility.h>
 
 fs::path WeaselUserDataPath() {
+  // Sandbox override for side-by-side runs (soak tests, automation): takes
+  // effect only when explicitly set, so the live service and its registry
+  // configuration stay untouched. Inherited by spawned deployer processes.
+  WCHAR env_path[MAX_PATH] = {0};
+  DWORD env_len = GetEnvironmentVariableW(L"WEASEL_USER_DIR", env_path,
+                                          static_cast<DWORD>(_countof(env_path)));
+  if (env_len > 0 && env_len < _countof(env_path) && env_path[0]) {
+    return fs::path(env_path);
+  }
   WCHAR _path[MAX_PATH] = {0};
   const WCHAR KEY[] = L"Software\\Rime\\Weasel";
   HKEY hKey;
