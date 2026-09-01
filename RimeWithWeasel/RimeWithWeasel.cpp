@@ -143,6 +143,15 @@ void RimeWithWeaselHandler::Initialize() {
     rime_api->config_close(&config);
   }
   m_last_schema_id.clear();
+
+  // Warm one engine session so schema/lua/dictionary state finishes loading
+  // during server startup: create_session on a cold engine costs 900ms+ with
+  // a large schema, which otherwise lands on the first client login.
+  {
+    RimeSessionId warmup_session = rime_api->create_session();
+    if (warmup_session)
+      rime_api->destroy_session(warmup_session);
+  }
 }
 
 void RimeWithWeaselHandler::Finalize() {
