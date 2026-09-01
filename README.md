@@ -1,13 +1,4 @@
-﻿小狼毫自用分支，不定期可能rebase reset force push
-
-如果觉得我瞎整的还不错，可以请我喝冰阔落🥤 :)
-
-微信赞赏码
-
-<img width="600" height="600" src="https://github.com/user-attachments/assets/503063b1-4951-4d88-aaa3-463585135233" />
-
-
-【小狼毫】輸入法
+﻿【小狼毫】輸入法
 ================
 
 基於 中州韻輸入法引擎／Rime Input Method Engine 等開源技術
@@ -102,7 +93,6 @@
   * [marisa-trie](https://github.com/s-yata/marisa-trie) (BSD 2-Clause License, LGPL 2.1)
   * [OpenCC / 開放中文轉換](https://github.com/BYVoid/OpenCC) (Apache License 2.0)
   * [plum](https://github.com/rime/plum) (GNU Lesser General Public License v3.0)
-  * [WinSparkle](https://github.com/vslavik/winsparkle) (MIT License)
   * [yaml-cpp](https://github.com/jbeder/yaml-cpp) (MIT License)
   * [7-Zip](https://www.7-zip.org) (GNU LGPLv2.1+ with unRAR restriction)
 
