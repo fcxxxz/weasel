@@ -162,9 +162,21 @@ inline LPCWSTR ServiceExecutableName() {
   return L"WeaselServer.exe";
 }
 
+// Optional namespace suffix so test/automation binaries can run their own
+// server and pipe next to the user's live service without stealing or
+// blocking it (set WEASEL_IPC_NAMESPACE, e.g. "=test").
+inline std::wstring IpcNamespaceSuffix() {
+  WCHAR value[64] = {0};
+  DWORD length = GetEnvironmentVariableW(L"WEASEL_IPC_NAMESPACE", value,
+                                         static_cast<DWORD>(_countof(value)));
+  return (length > 0 && length < _countof(value)) ? std::wstring(value)
+                                                  : std::wstring();
+}
+
 inline std::wstring ServiceInstanceMutexName() {
   std::wstring name = L"(WEASEL)Furandōru-Sukāretto-";
   name += getUsername();
+  name += IpcNamespaceSuffix();
   return name;
 }
 
@@ -517,6 +529,7 @@ inline std::wstring GetPipeName() {
   pipe_name += getUsername();
   pipe_name += L"\\";
   pipe_name += WEASEL_IPC_PIPE_NAME;
+  pipe_name += IpcNamespaceSuffix();
   return pipe_name;
 }
 }  // namespace weasel

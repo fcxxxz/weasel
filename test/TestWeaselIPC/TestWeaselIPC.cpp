@@ -15,11 +15,13 @@ using namespace boost::interprocess;
 
 #include <iostream>
 #include <memory>
+#include <thread>
 
 CAppModule _Module;
 
 int console_main();
 int client_main();
+int bench_main(int iterations, int threads);
 int server_main();
 int unit_main();
 
@@ -44,6 +46,10 @@ int _tmain(int argc, _TCHAR* argv[]) {
     return 0;
   } else if (argc > 1 && !wcscmp(L"/unit", argv[1])) {
     return unit_main();
+  } else if (argc > 1 && !wcscmp(L"/bench", argv[1])) {
+    int iterations = argc > 2 ? _wtoi(argv[2]) : 2000;
+    int threads = argc > 3 ? _wtoi(argv[3]) : 4;
+    return bench_main(iterations, threads);
   }
 
   return -1;
@@ -447,6 +453,140 @@ const char* wcstomb(const wchar_t* wcs) {
   WideCharToMultiByte(CP_OEMCP, NULL, wcs, -1, buffer, buffer_len, NULL, FALSE);
   return buffer;
 }
+
+// ---------------------------------------------------------------------------
+// /bench [iterations] [threads]: measure client-side IPC round-trip latency
+// and per-thread pipe-context memory growth against a running /start server.
+// ---------------------------------------------------------------------------
+
+#include <algorithm>
+#include <chrono>
+#include <psapi.h>
+#include <vector>
+
+struct BenchStats {
+  double min_us = 0, p50 = 0, p95 = 0, p99 = 0, max_us = 0, mean = 0;
+};
+
+static BenchStats Summarize(std::vector<double>& samples) {
+  BenchStats s;
+  if (samples.empty())
+    return s;
+  std::sort(samples.begin(), samples.end());
+  const auto pick = [&](double q) {
+    size_t i = static_cast<size_t>(q * (samples.size() - 1) + 0.5);
+    return samples[(std::min)(i, samples.size() - 1)];
+  };
+    s.min_us = samples.front();
+  s.p50 = pick(0.50);
+  s.p95 = pick(0.95);
+  s.p99 = pick(0.99);
+    s.max_us = samples.back();
+  double sum = 0;
+  for (double v : samples)
+    sum += v;
+  s.mean = sum / samples.size();
+  return s;
+}
+
+static void Report(const char* name, const BenchStats& s) {
+  std::cout << "BENCH " << name << " min_us=" << (long long)s.min_us
+            << " p50_us=" << (long long)s.p50 << " p95_us=" << (long long)s.p95
+            << " p99_us=" << (long long)s.p99 << " max_us=" << (long long)s.max_us
+            << " mean_us=" << (long long)s.mean << std::endl;
+}
+
+static size_t WorkingSetKB() {
+  PROCESS_MEMORY_COUNTERS pmc{};
+  GetProcessMemoryInfo(GetCurrentProcess(), &pmc, sizeof(pmc));
+  return pmc.WorkingSetSize / 1024;
+}
+
+static bool read_buffer_bench(LPWSTR buffer, UINT length) {
+  // Touch the response body so parsing cost is not optimized away.
+  volatile wchar_t sink = buffer[0];
+  (void)sink;
+  return length > 0;
+}
+
+int bench_main(int iterations, int threads) {
+  if (iterations <= 0)
+    iterations = 2000;
+  if (threads <= 0)
+    threads = 1;
+
+  weasel::Client client;
+  if (!client.Connect()) {
+    std::cerr << "bench: failed to connect." << std::endl;
+    return -2;
+  }
+  client.StartSession();
+  if (!client.Echo()) {
+    std::cerr << "bench: failed to login." << std::endl;
+    return -3;
+  }
+
+  using clock = std::chrono::steady_clock;
+
+  // warmup both paths
+  for (int i = 0; i < 100; ++i) {
+    client.Echo();
+    client.ProcessKeyEvent(weasel::KeyEvent(L'a', 0));
+    client.GetResponseData(std::bind<bool>(
+        read_buffer_bench, std::placeholders::_1, std::placeholders::_2));
+  }
+
+  std::vector<double> echo_us, key_us;
+  echo_us.reserve(iterations);
+  key_us.reserve(iterations);
+  weasel::KeyEvent key(L'a', 0);
+
+  for (int i = 0; i < iterations; ++i) {
+    auto t0 = clock::now();
+    bool ok = client.Echo();
+    auto t1 = clock::now();
+    if (ok)
+      echo_us.push_back(
+          std::chrono::duration<double, std::micro>(t1 - t0).count());
+
+    t0 = clock::now();
+    bool eaten = client.ProcessKeyEvent(key);
+    bool got = false;
+    if (eaten) {
+      got = client.GetResponseData(std::bind<bool>(
+          read_buffer_bench, std::placeholders::_1, std::placeholders::_2));
+    }
+    t1 = clock::now();
+    if (got)
+      key_us.push_back(
+          std::chrono::duration<double, std::micro>(t1 - t0).count());
+  }
+
+  Report("echo", Summarize(echo_us));
+  Report("key_roundtrip", Summarize(key_us));
+
+  // Memory growth per additional transacting thread (thread-local pipe
+  // handle + 64KB context each).
+  const size_t ws_before = WorkingSetKB();
+  std::vector<std::thread> workers;
+  for (int t = 0; t < threads; ++t) {
+    workers.emplace_back([&client]() {
+      for (int i = 0; i < 50; ++i) {
+        client.Echo();
+      }
+    });
+  }
+  for (auto& w : workers)
+    w.join();
+  const size_t ws_after = WorkingSetKB();
+  std::cout << "BENCH threads=" << threads << " ws_before_kb=" << ws_before
+            << " ws_after_kb=" << ws_after << " delta_kb=" << (ws_after - ws_before)
+            << std::endl;
+
+  client.EndSession();
+  return 0;
+}
+
 
 int console_main() {
   weasel::Client client;
