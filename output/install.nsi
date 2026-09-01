@@ -5,6 +5,39 @@
 !include x64.nsh
 !include winVer.nsh
 
+;--------------------------------
+; Helpers
+
+; 停止属于指定安装树（可执行文件路径前缀匹配）的 WeaselServer 进程。
+; 不启动旧版 WeaselServer.exe：旧版可能依赖已被移除的 WinSparkle.dll，
+; 加载失败会弹系统错误框并阻塞 ExecWait；也不按进程名全局 taskkill，
+; 避免误杀其他安装目录 / 其他用户会话 / 并行测试中的同名服务。
+!macro STOP_WEASEL_SERVERS_BODY
+  Exch $9   ; $9 = 安装根目录
+  Push $8
+  FileOpen $8 "$TEMP\weasel-stop-servers.ps1" w
+  FileWrite $8 "param([string]$$Root = '')$\r$\n"
+  FileWrite $8 "if ([string]::IsNullOrEmpty($$Root)) { exit 0 }$\r$\n"
+  FileWrite $8 "$$prefix = $$Root.TrimEnd('\') + '\'$\r$\n"
+  FileWrite $8 "Get-Process WeaselServer -ErrorAction SilentlyContinue |$\r$\n"
+  FileWrite $8 "  Where-Object { $$_.Path -and $$_.Path.StartsWith($$prefix, [System.StringComparison]::OrdinalIgnoreCase) } |$\r$\n"
+  FileWrite $8 "  Stop-Process -Force -ErrorAction SilentlyContinue$\r$\n"
+  FileWrite $8 "exit 0$\r$\n"
+  FileClose $8
+  ExecWait '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File "$TEMP\weasel-stop-servers.ps1" -Root "$9"'
+  Delete "$TEMP\weasel-stop-servers.ps1"
+  Pop $8
+  Pop $9
+!macroend
+
+Function StopWeaselServersByRoot
+  !insertmacro STOP_WEASEL_SERVERS_BODY
+FunctionEnd
+
+Function un.StopWeaselServersByRoot
+  !insertmacro STOP_WEASEL_SERVERS_BODY
+FunctionEnd
+
 Unicode true
 
 ;--------------------------------
@@ -161,9 +194,12 @@ uninst:
   CopyFiles $R1\data\*.* $TEMP\weasel-backup
 
 call_uninstaller:
-  ; 不启动旧版 WeaselServer.exe：旧版可能依赖已被移除的 WinSparkle.dll。
-  ; 直接结束旧服务，避免加载旧版 DLL 或因未知参数阻塞 ExecWait。
-  ExecWait '"$SYSDIR\taskkill.exe" /F /T /IM WeaselServer.exe'
+  ; 按旧安装树路径精确停止服务（见 StopWeaselServersByRoot）
+  Push $R9
+  ${GetParent} $R1 $R9
+  Push $R9
+  Call StopWeaselServersByRoot
+  Pop $R9
   ExecWait '"$R1\WeaselSetup.exe" /u'
   ; Remove registry keys
   DeleteRegKey HKLM SOFTWARE\Rime
@@ -213,8 +249,13 @@ Section "Weasel"
   ; Reset INSTDIR for the new version
   StrCpy $INSTDIR "${WEASEL_ROOT}"
 
-  IfFileExists "$INSTDIR\WeaselServer.exe" 0 +2
-  ExecWait '"$SYSDIR\taskkill.exe" /F /T /IM WeaselServer.exe'
+  IfFileExists "$INSTDIR\WeaselServer.exe" 0 skip_stop_weasel
+  Push $R9
+  ${GetParent} $INSTDIR $R9
+  Push $R9
+  Call StopWeaselServersByRoot
+  Pop $R9
+skip_stop_weasel:
 
   SetOverwrite try
   ; Set output path to the installation directory.
@@ -253,14 +294,22 @@ program_files:
       File "WeaselDeployer.exe"
       File "WeaselServer.exe"
       File "rime.dll"
+      ; 随包附带 WinSparkle.dll：当前构建不调用升级检查，但旧版
+      ; WeaselServer.exe 仍依赖此 DLL，缺失会导致其启动报错
+      File "WinSparkle.dll"
     ${ElseIf} ${IsNativeAMD64}
       File "WeaselDeployer.exe"
       File "WeaselServer.exe"
       File "rime.dll"
+      ; 随包附带 WinSparkle.dll：当前构建不调用升级检查，但旧版
+      ; WeaselServer.exe 仍依赖此 DLL，缺失会导致其启动报错
+      File "WinSparkle.dll"
     ${Else}
       File "Win32\WeaselDeployer.exe"
       File "Win32\WeaselServer.exe"
       File "Win32\rime.dll"
+      ; 同上：兼容旧版二进制的 Win32 变体
+      File "Win32\WinSparkle.dll"
     ${Endif}
   ; install x64 build for NativeAMD64_BELLOW_WINDOWS11
   ${Else} ; Windows 10 or bellow
@@ -268,10 +317,15 @@ program_files:
       File "WeaselDeployer.exe"
       File "WeaselServer.exe"
       File "rime.dll"
+      ; 随包附带 WinSparkle.dll：当前构建不调用升级检查，但旧版
+      ; WeaselServer.exe 仍依赖此 DLL，缺失会导致其启动报错
+      File "WinSparkle.dll"
     ${Else}
       File "Win32\WeaselDeployer.exe"
       File "Win32\WeaselServer.exe"
       File "Win32\rime.dll"
+      ; 同上：兼容旧版二进制的 Win32 变体
+      File "Win32\WinSparkle.dll"
     ${Endif}
   ${Endif}
 
@@ -379,7 +433,11 @@ SectionEnd
 
 Section "Uninstall"
 
-  ExecWait '"$SYSDIR\taskkill.exe" /F /T /IM WeaselServer.exe'
+  Push $R9
+  ${GetParent} $INSTDIR $R9
+  Push $R9
+  Call un.StopWeaselServersByRoot
+  Pop $R9
 
   ExecWait '"$INSTDIR\WeaselSetup.exe" /u'
 
