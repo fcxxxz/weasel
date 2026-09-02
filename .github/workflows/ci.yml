@@ -146,27 +146,19 @@ jobs:
           automatic_release_tag: latest
           prerelease: true
           title: "Weasel ${{ env.git_ref_name }}"
-          body: |
-            小狼毫个人优化构建（滚动更新，本页始终是最新版本）
-
-            **下载**：`weasel-*-installer.exe` 为安装程序（Windows 8.1 ~ 11）；`debug_symbols.7z` 为调试符号，仅排查崩溃时需要。
-
-            **安装前请先退出正在运行的旧版小狼毫**（托盘图标右键 » 退出）。
-
-            基于官方版与 fxliang/pb 深度整合，与两者最新版同机实测（同配置交叉多轮）：
-
-            | 指标 | 本构建 | 官方 master | fxliang pb |
-            |---|---:|---:|---:|
-            | 按键 p50 / p95 | **31 / 53µs** | 45 / 69µs | 65 / 100µs |
-            | 首次登录 | **约 2ms** | 90~246ms | 92ms |
-            | 应用切换 | **约 1ms** | 1~89ms | 90ms |
-
-            主要改动：修复隐藏候选窗每键泄漏句柄、引擎会话常驻免重复冷加载、面板隐藏期跳过布局、移除官方升级通道、渲染 GPU 优先（WEASEL_WARP=1 可切省内存模式）。
-
-            完整技术报告见仓库 docs/upstream-comparison-2026-09.md。
           files: |
             ./output/archives/weasel*.exe
             ./output/archives/debug_symbols.7z
+
+      # marvinpinto 不支持自定义正文（会自动生成英文 changelog），
+      # 发布后用 gh 覆盖为固定的中文说明
+      # marvinpinto 不支持自定义正文（自动生成英文 changelog），
+      # 发布后用仓库内的固定中文说明覆盖
+      - name: 发布说明改写为中文
+        if: ${{ github.repository != 'rime/weasel' && github.repository != 'fxliang/weasel' && github.ref == 'refs/heads/master' && matrix.variant == 'msbuild' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release edit latest --repo "$GITHUB_REPOSITORY" --notes-file docs/release-notes.md
 
       # Release-only steps (run on tags or master)
       - name: Extract changelog
