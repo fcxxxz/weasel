@@ -5,7 +5,9 @@
 namespace weasel {
 
 template <typename T>
-void TryDeserialize(std::wstringstream& ss, T& t) {
+void TryDeserialize(std::wstringstream& ss,
+                    T& t,
+                    ResponseParser* target = nullptr) {
   try {
     // The archive constructor itself reads and validates the signature, so
     // it must stay inside the guard: a malformed payload would otherwise
@@ -21,6 +23,8 @@ void TryDeserialize(std::wstringstream& ss, T& t) {
       t = T();
     } catch (...) {
     }
+    if (target)
+      target->MarkMalformed();
     OutputDebugStringA("weasel: IPC payload deserialization failed\n");
   }
 }

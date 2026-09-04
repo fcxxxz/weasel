@@ -126,11 +126,16 @@ bool WeaselTSF::_ProcessKeyEvent(WPARAM wParam, LPARAM lParam, BOOL* pfEaten) {
     if (!keyCountToSimulate) {
       bool eaten = false;
       if (m_client.ProcessKeyEvent(ke, &eaten)) {
-        *pfEaten = (BOOL)eaten;
         processed = true;
         weasel::ResponseParser parser(NULL, NULL, &_status, NULL,
                                       &_cand->style());
-        m_client.GetResponseData(std::ref(parser));
+        const bool response_ok = m_client.GetResponseData(std::ref(parser));
+        *pfEaten = response_ok ? (BOOL)eaten : FALSE;
+        if (!response_ok) {
+          _keyEventTestCache.Clear();
+          _activeKeyDownGuard.Reset();
+          m_client.ClearComposition();
+        }
       } else {
         *pfEaten = FALSE;
         _RecoverServerAsync();

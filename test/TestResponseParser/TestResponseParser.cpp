@@ -5,6 +5,7 @@
 #include <boost/archive/text_woarchive.hpp>
 #include <boost/detail/lightweight_test.hpp>
 #include <ResponseParser.h>
+#include <WeaselText.h>
 #include <sstream>
 #include <string>
 
@@ -111,7 +112,7 @@ void test_5() {
   weasel::Status status;
   ctx.cinfo.candies.push_back(weasel::Text(L"舊候選"));
   weasel::ResponseParser parser(&commit, &ctx, &status);
-  parser(resp, len);
+  BOOST_TEST(!parser(resp, len));
   BOOST_TEST(ctx.cinfo.candies.empty());
 }
 
@@ -167,6 +168,69 @@ void test_7() {
   }
 }
 
+void test_8() {
+  // Invalid label formats must fall back to the raw label instead of letting
+  // the CRT invalid-parameter handler terminate the TSF host process.
+  BOOST_TEST(weasel::FormatCandidateLabel(L"候选", L"%s.") == L"候选.");
+  BOOST_TEST(weasel::FormatCandidateLabel(L"候选", L"%s %s") == L"候选");
+  BOOST_TEST(weasel::FormatCandidateLabel(L"候选", L"%q") == L"候选");
+
+  weasel::CandidateInfo candidates;
+  candidates.candies.push_back(weasel::Text(L"候选"));
+  candidates.highlighted = 9;
+  candidates.normalize();
+  BOOST_TEST(candidates.comments.size() == 1);
+  BOOST_TEST(candidates.labels.size() == 1);
+  BOOST_TEST(candidates.labels[0].str == L"1");
+  BOOST_TEST(candidates.highlighted == 0);
+}
+
+void test_9() {
+  // Candidate archives from older/custom servers may omit parallel labels and
+  // comments. The parser must normalize them before UI layout consumes them.
+  weasel::CandidateInfo sent;
+  sent.candies.push_back(weasel::Text(L"候选"));
+  sent.highlighted = 7;
+  std::wostringstream oss;
+  {
+    boost::archive::text_woarchive oa(oss);
+    oa << sent;
+  }
+  const std::wstring response =
+      std::wstring(L"action=ctx\nctx.cand=") + oss.str() + L"\n.\n";
+  std::vector<WCHAR> buffer(response.begin(), response.end());
+  std::wstring commit;
+  weasel::Context context;
+  weasel::Status status;
+  weasel::ResponseParser parser(&commit, &context, &status);
+  BOOST_TEST(parser(buffer.data(), static_cast<UINT>(buffer.size())));
+  BOOST_TEST(context.cinfo.candies.size() == 1);
+  BOOST_TEST(context.cinfo.comments.size() == 1);
+  BOOST_TEST(context.cinfo.labels.size() == 1);
+  BOOST_TEST(context.cinfo.labels[0].str == L"1");
+  BOOST_TEST(context.cinfo.highlighted == 0);
+  BOOST_TEST(context.cinfo.totalPages == 1);
+}
+
+void test_10() {
+  // Clamp invalid preedit ranges before UI code uses them for substr().
+  WCHAR resp[] =
+      L"action=ctx\n"
+      L"ctx.preedit=abc\n"
+      L"ctx.preedit.cursor=-10,100,999\n"
+      L".\n";
+  std::wstring commit;
+  weasel::Context context;
+  weasel::Status status;
+  weasel::ResponseParser parser(&commit, &context, &status);
+  BOOST_TEST(parser(resp, static_cast<UINT>(wcslen(resp))));
+  BOOST_ASSERT(context.preedit.attributes.size() == 1);
+  const auto& range = context.preedit.attributes[0].range;
+  BOOST_TEST(range.start == 0);
+  BOOST_TEST(range.end == 3);
+  BOOST_TEST(range.cursor == 3);
+}
+
 int _tmain(int argc, _TCHAR* argv[]) {
   test_1();
   test_2();
@@ -175,6 +239,9 @@ int _tmain(int argc, _TCHAR* argv[]) {
   test_5();
   test_6();
   test_7();
+  test_8();
+  test_9();
+  test_10();
 
   return boost::report_errors();
 }

@@ -285,7 +285,10 @@ bool WeaselTSF::_Reconnect(bool update_tsf_status, bool wait_for_pipe) {
   if (ok) {
     _UpdateLanguageBar(_status);
   }
-  return true;
+  // A live pipe is not enough to declare recovery complete: the first
+  // response may still contain a malformed schema/style archive. Let the
+  // caller retry instead of treating a parser failure as a healthy session.
+  return ok;
 }
 
 void WeaselTSF::_RecoverServerAsync() {

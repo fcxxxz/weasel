@@ -207,8 +207,15 @@ class PipeChannel : public PipeChannelBase {
     }
 
     // Use whole buffer to receive data in client
-    return handler((LPWSTR)_GetContext()->buffer.get(),
-                   (UINT)(buff_size * sizeof(char) / sizeof(wchar_t)));
+    try {
+      return handler((LPWSTR)_GetContext()->buffer.get(),
+                     (UINT)(buff_size * sizeof(char) / sizeof(wchar_t)));
+    } catch (...) {
+      // A malformed response must never escape onto the host application's
+      // UI thread. Callers treat false as a recoverable IPC failure.
+      OutputDebugStringA("weasel: IPC response handler failed\n");
+      return false;
+    }
   }
 
  protected:

@@ -2,6 +2,7 @@
 #include <RimeWithWeasel.h>
 #include <StringAlgorithm.hpp>
 #include <WeaselConstants.h>
+#include <WeaselText.h>
 #include <WeaselStyleColor.h>
 #include <WeaselUtility.h>
 
@@ -844,14 +845,6 @@ bool RimeWithWeaselHandler::_ShowMessage(Context& ctx, Status& status) {
     return m_ui->IsCountingDown();
   }
 }
-inline std::string _GetLabelText(const std::vector<Text>& labels,
-                                 int id,
-                                 const wchar_t* format) {
-  wchar_t buffer[128];
-  swprintf_s<128>(buffer, format, labels.at(id).str.c_str());
-  return wtou8(std::wstring(buffer));
-}
-
 bool RimeWithWeaselHandler::_Respond(WeaselSessionId ipc_id,
                                      EatLine eat,
                                      RimeUiStatusSnapshot* status_snapshot,
@@ -976,11 +969,9 @@ bool RimeWithWeaselHandler::_Respond(WeaselSessionId ipc_id,
           for (auto i = 0; i < ctx.menu.num_candidates; i++) {
             std::wstring label_w;
             if (label_valid) {
-              wchar_t buf_lbl[128];
-              swprintf_s<128>(buf_lbl,
-                              session_status.style.label_text_format.c_str(),
-                              cinfo.labels.at(i).str.c_str());
-              label_w = std::wstring(buf_lbl);
+              label_w = weasel::FormatCandidateLabel(
+                  cinfo.labels.at(i).str,
+                  session_status.style.label_text_format.c_str());
             }
             std::wstring comment_w =
                 comment_valid ? cinfo.comments.at(i).str : std::wstring();

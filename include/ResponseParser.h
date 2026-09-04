@@ -29,6 +29,13 @@ struct ResponseParser {
 
   // 處理一行回應文本
   void Feed(const std::wstring& line);
+
+  // Mark a structurally invalid payload so callers can fall back to
+  // pass-through input instead of consuming a partially decoded response.
+  void MarkMalformed() { malformed = true; }
+
+ private:
+  bool malformed = false;
 };
 
 }  // namespace weasel

@@ -64,6 +64,21 @@ struct Text {
     }
     return false;
   }
+  void normalize() {
+    const int length = static_cast<int>(str.size());
+    const auto clamp = [length](int value) {
+      return value < 0 ? 0 : (value > length ? length : value);
+    };
+    for (auto& attribute : attributes) {
+      attribute.range.start = clamp(attribute.range.start);
+      attribute.range.end = clamp(attribute.range.end);
+      if (attribute.range.start > attribute.range.end)
+        std::swap(attribute.range.start, attribute.range.end);
+      if (attribute.range.cursor >= 0) {
+        attribute.range.cursor = clamp(attribute.range.cursor);
+      }
+    }
+  }
   std::wstring str;
   std::vector<TextAttribute> attributes;
 };
@@ -83,6 +98,23 @@ struct CandidateInfo {
     candies.clear();
     comments.clear();
     labels.clear();
+  }
+  // Keep the UI-facing parallel arrays coherent when a compatible but
+  // incomplete response comes from an older/custom server.
+  void normalize() {
+    comments.resize(candies.size());
+    const size_t old_labels = labels.size();
+    labels.resize(candies.size());
+    for (size_t i = old_labels; i < labels.size(); ++i)
+      labels[i].str = std::to_wstring((i + 1) % 10);
+    if (candies.empty()) {
+      highlighted = 0;
+    } else if (highlighted < 0 ||
+               highlighted >= static_cast<int>(candies.size())) {
+      highlighted = 0;
+    }
+    if (!candies.empty() && totalPages <= 0)
+      totalPages = 1;
   }
   bool empty() const { return candies.empty(); }
   bool operator==(const CandidateInfo& ci) const {
@@ -126,6 +158,11 @@ struct Context {
     preedit.clear();
     aux.clear();
     cinfo.clear();
+  }
+  void normalize() {
+    preedit.normalize();
+    aux.normalize();
+    cinfo.normalize();
   }
   bool empty() const { return preedit.empty() && aux.empty() && cinfo.empty(); }
   bool operator==(const Context& ctx) const {

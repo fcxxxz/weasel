@@ -19,12 +19,17 @@ ResponseParser::ResponseParser(std::wstring* commit,
 }
 
 bool ResponseParser::operator()(LPWSTR buffer, UINT length) {
+  const auto finish = [this](bool result) {
+    if (p_context)
+      p_context->normalize();
+    return result && !malformed;
+  };
   wbufferstream bs(buffer, length);
   std::wstring line;
   while (bs.good()) {
     std::getline(bs, line);
     if (!bs.good())
-      return false;
+      return finish(false);
 
     // file ends
     if (line == L".")
@@ -32,7 +37,7 @@ bool ResponseParser::operator()(LPWSTR buffer, UINT length) {
 
     Feed(line);
   }
-  return bs.good();
+  return finish(bs.good());
 }
 
 void ResponseParser::Feed(const std::wstring& line) {

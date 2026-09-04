@@ -75,7 +75,8 @@ void ContextUpdater::_StoreCand(Deserializer::KeyType k,
   CandidateInfo& cinfo = m_pTarget->p_context->cinfo;
   std::wstringstream ss(value);
 
-  TryDeserialize(ss, cinfo);
+  TryDeserialize(ss, cinfo, m_pTarget);
+  cinfo.normalize();
 
   for (auto& cand : cinfo.candies)
     cand.str = unescape_string(cand.str);

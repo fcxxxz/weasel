@@ -8,6 +8,7 @@
 #include <resource.h>
 #include <windowsx.h>
 #include <wrl/client.h>
+#include <WeaselText.h>
 
 namespace fs = std::filesystem;
 
@@ -47,11 +48,6 @@ class ThreadDpiAwarenessScope {
   DPI_AWARENESS_CONTEXT(WINAPI* setter_)(DPI_AWARENESS_CONTEXT) = nullptr;
 };
 
-wstring FormatCandidateLabel(const wstring& label, const wchar_t* format) {
-  wchar_t buffer[128];
-  swprintf_s<128>(buffer, format, label.c_str());
-  return wstring(buffer);
-}
 }  // namespace
 
 void LoadIconIfNeed(wstring& oicofile,
@@ -719,8 +715,8 @@ bool WeaselPanel::_DrawCandidates() {
     hilitefunc(i, back_color, 0, border_color, m_style.border);
     if (i >= 0 && i < (int)labels.size()) {
       auto rc = m_layout->GetCandidateLabelRect(i);
-      auto label = FormatCandidateLabel(labels[i].str,
-                                        m_style.label_text_format.c_str());
+      auto label = weasel::FormatCandidateLabel(
+          labels[i].str, m_style.label_text_format.c_str());
       if (!COLORTRANSPARENT(label_text_color) && !rc.IsRectNull() &&
           !label.empty() && labeltxtFormat.Get()) {
         if (m_istorepos)
