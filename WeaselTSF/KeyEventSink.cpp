@@ -93,8 +93,16 @@ bool WeaselTSF::_TestKeyEvent(WPARAM wParam, LPARAM lParam, BOOL* pfEaten) {
   return predicted_eaten;
 }
 
-bool WeaselTSF::_ProcessKeyEvent(WPARAM wParam, LPARAM lParam, BOOL* pfEaten) {
+bool WeaselTSF::_ProcessKeyEvent(WPARAM wParam,
+                                 LPARAM lParam,
+                                 BOOL* pfEaten,
+                                 bool* hadPendingCompositionEnd) {
   *pfEaten = FALSE;
+  const bool hasPendingCompositionEnd =
+      _compositionEndRetryState.HasPending(_pCompositionGeneration);
+  if (hadPendingCompositionEnd != nullptr)
+    *hadPendingCompositionEnd = hasPendingCompositionEnd;
+
   // when _IsKeyboardDisabled don't eat the key,
   // when keyboard closable and keyboard closed, don't eat the key
   if ((_isToOpenClose && !_IsKeyboardOpen()) || _IsKeyboardDisabled()) {
@@ -105,6 +113,17 @@ bool WeaselTSF::_ProcessKeyEvent(WPARAM wParam, LPARAM lParam, BOOL* pfEaten) {
   if (!_CanHandleKeyEvent()) {
     TRACE_KEY_EVENT(L"Process", wParam, lParam,
                     L"skip manual_exit_or_recovery_disabled=1");
+    return false;
+  }
+
+  const bool endRetryAccepted =
+      !hasPendingCompositionEnd || _RetryPendingCompositionEnd();
+  if (!weasel::CanProcessKeyAfterCompositionEndRetry(hasPendingCompositionEnd,
+                                                     endRetryAccepted)) {
+    _positionRequestGate.Invalidate();
+    _cand->Show(FALSE);
+    TRACE_KEY_EVENT(L"Process", wParam, lParam,
+                    L"skip pending_composition_end_retry_failed=1");
     return false;
   }
 
@@ -263,10 +282,16 @@ STDMETHODIMP WeaselTSF::OnKeyDown(ITfContext* pContext,
                     L"active_duplicate=1 suppress=1");
     return S_OK;
   }
-  bool processed = _ProcessKeyEvent(wParam, lParam, pfEaten);
+  bool hadPendingCompositionEnd = false;
+  bool processed =
+      _ProcessKeyEvent(wParam, lParam, pfEaten, &hadPendingCompositionEnd);
   if (processed && *pfEaten)
     _activeKeyDownGuard.Remember(wParam, lParam);
-  _UpdateComposition(pContext);
+  const bool pendingCompositionEndAfter =
+      _compositionEndRetryState.HasPending(_pCompositionGeneration);
+  if (weasel::ShouldRequestCompositionUpdateAfterKey(
+          hadPendingCompositionEnd, processed, pendingCompositionEndAfter))
+    _UpdateComposition(pContext);
   TRACE_KEY_EVENT(L"OnKeyDown", wParam, lParam,
                   L"processed=" + std::to_wstring(processed) + L" eaten=" +
                       std::to_wstring(*pfEaten));
@@ -317,8 +342,14 @@ STDMETHODIMP WeaselTSF::OnKeyUp(ITfContext* pContext,
     return S_OK;
   }
   _keyEventTestCache.Clear();
-  bool processed = _ProcessKeyEvent(wParam, lParam, pfEaten);
-  if (!_async_edit)
+  bool hadPendingCompositionEnd = false;
+  bool processed =
+      _ProcessKeyEvent(wParam, lParam, pfEaten, &hadPendingCompositionEnd);
+  const bool pendingCompositionEndAfter =
+      _compositionEndRetryState.HasPending(_pCompositionGeneration);
+  if (!_async_edit &&
+      weasel::ShouldRequestCompositionUpdateAfterKey(
+          hadPendingCompositionEnd, processed, pendingCompositionEndAfter))
     _UpdateComposition(pContext);
   TRACE_KEY_EVENT(L"OnKeyUp", wParam, lParam,
                   L"processed=" + std::to_wstring(processed) + L" eaten=" +

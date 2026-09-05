@@ -1,5 +1,6 @@
 #pragma once
 
+#include <CandidatePresentationGate.h>
 #include "Globals.h"
 #include <WeaselIPC.h>
 #include <WeaselIPCData.h>
@@ -113,7 +114,7 @@ class WeaselTSF : public ITfTextInputProcessorEx,
   /* Composition */
   void _StartComposition(com_ptr<ITfContext> pContext,
                          BOOL fCUASWorkaroundEnabled);
-  void _EndComposition(com_ptr<ITfContext> pContext,
+  BOOL _EndComposition(com_ptr<ITfContext> pContext,
                        BOOL clear,
                        BOOL endUI = TRUE);
   BOOL _ShowInlinePreedit(com_ptr<ITfContext> pContext,
@@ -121,11 +122,45 @@ class WeaselTSF : public ITfTextInputProcessorEx,
   void _UpdateComposition(com_ptr<ITfContext> pContext);
   BOOL _IsComposing();
   BOOL _IsCurrentComposition(ITfComposition* pComposition);
-  void _SetComposition(com_ptr<ITfComposition> pComposition);
-  void _SetCompositionPosition(const RECT& rc);
+  BOOL _IsCurrentComposition(ITfComposition* pComposition,
+                             weasel::CompositionGeneration generation);
+  BOOL _IsCurrentCompositionGeneration(
+      weasel::CompositionGeneration generation);
+  BOOL _SetComposition(com_ptr<ITfComposition> pComposition,
+                       weasel::CompositionGeneration generation);
+  void _SetCompositionPosition(
+      const RECT& rc,
+      ITfComposition* pComposition,
+      weasel::CompositionGeneration generation,
+      weasel::PositionRequestGeneration requestGeneration);
+  void _SetSelectionPosition(
+      const RECT& rc,
+      ITfContext* pContext,
+      weasel::PositionRequestGeneration requestGeneration);
+  BOOL _AcceptPositionAfterCuasProbe(const RECT& rc);
+  void _OnCompositionPositionUnavailable(
+      weasel::CompositionGeneration generation);
+  BOOL _IsCurrentPositionRequest(
+      weasel::PositionRequestGeneration requestGeneration);
+  BOOL _CanApplySelectionPosition(
+      ITfContext* pContext,
+      weasel::PositionRequestGeneration requestGeneration);
   BOOL _UpdateCompositionWindow(com_ptr<ITfContext> pContext);
+  BOOL _UpdateCompositionWindow(com_ptr<ITfContext> pContext,
+                                com_ptr<ITfComposition> pComposition,
+                                weasel::CompositionGeneration generation);
   void _FinalizeComposition();
-  void _AbortComposition(bool clear = true);
+  BOOL _FinalizeComposition(ITfComposition* pComposition,
+                            weasel::CompositionGeneration generation);
+  BOOL _RetryPendingCompositionEnd();
+  void _RecordPendingCompositionEnd(weasel::CompositionGeneration generation,
+                                    com_ptr<ITfContext> pContext,
+                                    BOOL clear,
+                                    BOOL endUI);
+  void _CompletePendingCompositionEnd(weasel::CompositionGeneration generation);
+  void _CancelCompositionGeneration(weasel::CompositionGeneration generation);
+  void _AbortComposition(bool clear = true,
+                         bool compositionEndAttempted = false);
 
   /* Language bar */
   HWND _GetFocusedContextWindow();
@@ -135,7 +170,9 @@ class WeaselTSF : public ITfTextInputProcessorEx,
   bool _EnsureServerConnected(bool update_tsf_status = true);
 
   /* UI */
-  void _UpdateUI(const weasel::Context& ctx, const weasel::Status& status);
+  void _UpdateUI(const weasel::Context& ctx,
+                 const weasel::Status& status,
+                 bool forceHide = false);
   void _StartUI();
   void _EndUI();
   void _ShowUI();
@@ -144,7 +181,8 @@ class WeaselTSF : public ITfTextInputProcessorEx,
 
   /* Display Attribute */
   void _ClearCompositionDisplayAttributes(TfEditCookie ec,
-                                          _In_ ITfContext* pContext);
+                                          _In_ ITfContext* pContext,
+                                          _In_ ITfComposition* pComposition);
   BOOL _SetCompositionDisplayAttributes(TfEditCookie ec,
                                         _In_ ITfContext* pContext,
                                         ITfRange* pRangeComposition);
@@ -174,7 +212,10 @@ class WeaselTSF : public ITfTextInputProcessorEx,
   BOOL _InitKeyEventSink();
   void _UninitKeyEventSink();
   bool _TestKeyEvent(WPARAM wParam, LPARAM lParam, BOOL* pfEaten);
-  bool _ProcessKeyEvent(WPARAM wParam, LPARAM lParam, BOOL* pfEaten);
+  bool _ProcessKeyEvent(WPARAM wParam,
+                        LPARAM lParam,
+                        BOOL* pfEaten,
+                        bool* hadPendingCompositionEnd = nullptr);
   bool _CanHandleKeyEvent();
   void _ResetKeyEventTestCacheIfNeeded();
 
@@ -224,6 +265,10 @@ class WeaselTSF : public ITfTextInputProcessorEx,
   com_ptr<CCompartmentEventSink> _pConvertionCompartmentSink;
 
   com_ptr<ITfComposition> _pComposition;
+  weasel::CompositionGeneration _pCompositionGeneration = 0;
+  weasel::CandidatePositionRequestGate _positionRequestGate;
+  weasel::CompositionEndRetryState _compositionEndRetryState;
+  com_ptr<ITfContext> _pPendingCompositionEndContext;
 
   com_ptr<CLangBarItemButton> _pLangBarButton;
 

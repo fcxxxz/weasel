@@ -1,4 +1,5 @@
 #pragma once
+#include <CandidatePresentationGate.h>
 #include <WeaselUI.h>
 #include "ctffunc.h"
 
@@ -47,9 +48,17 @@ class CCandidateList : public ITfIntegratableCandidateListUIElement,
   STDMETHODIMP FinalizeExactCompositionString();
 
   /* Update */
-  void UpdateUI(const weasel::Context& ctx, const weasel::Status& status);
+  weasel::CompositionGeneration BeginComposition();
+  bool IsCurrentComposition(weasel::CompositionGeneration generation) const;
+  void OnPositionUnavailable(weasel::CompositionGeneration generation);
+  void CancelComposition(weasel::CompositionGeneration generation);
+  void UpdateUI(const weasel::Context& ctx,
+                const weasel::Status& status,
+                bool forceHide = false);
   void UpdateStyle(const weasel::UIStyle& sty);
-  void UpdateInputPosition(RECT const& rc);
+  void UpdateInputPosition(RECT const& rc,
+                           weasel::CompositionGeneration generation);
+  void CacheInputPosition(RECT const& rc);
   void Destroy();
   void DestroyAll();
   void StartUI();
@@ -88,6 +97,7 @@ class CCandidateList : public ITfIntegratableCandidateListUIElement,
   bool _uiStarted = false;
   weasel::UIStyle _style;
   bool _ui_warmed_up = false;
+  weasel::CandidatePresentationGate _presentationGate;
 
   com_ptr<ITfContext> _pContextDocument;
 };
