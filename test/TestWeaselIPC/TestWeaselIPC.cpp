@@ -698,8 +698,8 @@ int stress_main() {
   si.dwFlags = STARTF_USESHOWWINDOW;
   si.wShowWindow = SW_HIDE;
   PROCESS_INFORMATION pi = {0};
-  if (!CreateProcessW(self, &cmdline[0], NULL, NULL, FALSE,
-                      CREATE_NO_WINDOW, NULL, NULL, &si, &pi)) {
+  if (!CreateProcessW(self, &cmdline[0], NULL, NULL, FALSE, CREATE_NO_WINDOW,
+                      NULL, NULL, &si, &pi)) {
     std::cerr << "stress: failed to spawn server child." << std::endl;
     return 1;
   }
@@ -787,8 +787,7 @@ int stress_main() {
       bool ok = client.Echo();
       auto t1 = clock::now();
       if (ok) {
-        double ms =
-            std::chrono::duration<double, std::milli>(t1 - t0).count();
+        double ms = std::chrono::duration<double, std::milli>(t1 - t0).count();
         worst_echo_ms = (std::max)(worst_echo_ms, ms);
       }
       Sleep(10);
@@ -802,8 +801,8 @@ int stress_main() {
   load.join();
 
   const int expected = kThreads * kKeysPerThread;
-  std::cout << "STRESS logins=" << logins.load() << " keys_answered="
-            << answered.load() << "/" << expected
+  std::cout << "STRESS logins=" << logins.load()
+            << " keys_answered=" << answered.load() << "/" << expected
             << " keys_dropped=" << dropped.load()
             << " worst_echo_ms=" << worst_echo_ms << std::endl;
 

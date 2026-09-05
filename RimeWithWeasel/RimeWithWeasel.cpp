@@ -934,9 +934,8 @@ bool RimeWithWeaselHandler::_ShowMessage(const UiPendingUpdate& update,
     return counter;
   auto foption = update.show_notifications.find(update.message_option);
   auto falways = update.show_notifications.find("always");
-  if ((!update.add_session &&
-       (foption != update.show_notifications.end() ||
-        falways != update.show_notifications.end())) ||
+  if ((!update.add_session && (foption != update.show_notifications.end() ||
+                               falways != update.show_notifications.end())) ||
       message_type == "deploy") {
     m_ui->Update(ctx, status);
     if (update.show_notifications_time)
