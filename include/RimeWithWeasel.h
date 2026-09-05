@@ -2,7 +2,9 @@
 #include <WeaselIPC.h>
 #include <WeaselUI.h>
 #include <map>
+#include <set>
 #include <string>
+#include <memory>
 #include <mutex>
 
 #include <rime_api.h>
@@ -115,6 +117,22 @@ void LoadWeaselUIStyle(RimeConfig* config,
                        bool initialize = true,
                        const std::string& color_scheme = std::string());
 
+// Snapshot of one UI refresh. Produced by the gather phase of _UpdateUI
+// (engine reads, under the engine api lock) and applied by FlushPendingUI
+// after the api lock is released, so DWrite layout and window operations
+// never delay other clients' keystrokes.
+struct UiPendingUpdate {
+  weasel::Context ctx;
+  weasel::Status status;
+  bool add_session = false;
+  int show_notifications_time = 1200;
+  std::map<std::string, bool> show_notifications;
+  std::string message_type;
+  std::string message_value;
+  std::string message_label;
+  std::string message_option;
+};
+
 class RimeWithWeaselHandler : public weasel::RequestHandler {
  public:
   RimeWithWeaselHandler(weasel::UI* ui);
@@ -122,6 +140,7 @@ class RimeWithWeaselHandler : public weasel::RequestHandler {
   virtual void Initialize();
   virtual void Finalize();
   virtual DWORD FindSession(WeaselSessionId ipc_id);
+  virtual bool IsSessionLive(DWORD session_id);
   virtual DWORD AddSession(LPWSTR buffer, EatLine eat = 0);
   virtual DWORD RemoveSession(WeaselSessionId ipc_id);
   virtual BOOL ProcessKeyEvent(weasel::KeyEvent keyEvent,
@@ -146,6 +165,7 @@ class RimeWithWeaselHandler : public weasel::RequestHandler {
                          const std::string& opt,
                          bool val);
   virtual void UpdateColorTheme(BOOL darkMode);
+  virtual void FlushPendingUI();
 
   void OnUpdateUI(std::function<void()> const& cb);
   void OnMaintenanceResult(std::function<void(DWORD)> const& cb);
@@ -160,7 +180,9 @@ class RimeWithWeaselHandler : public weasel::RequestHandler {
                                    const std::string& schema_id);
   void _LoadAppInlinePreeditSet(WeaselSessionId ipc_id,
                                 bool ignore_app_name = false);
-  bool _ShowMessage(weasel::Context& ctx, weasel::Status& status);
+  bool _ShowMessage(const UiPendingUpdate& update,
+                    weasel::Context& ctx,
+                    weasel::Status& status);
   bool _Respond(WeaselSessionId ipc_id,
                 EatLine eat,
                 RimeUiStatusSnapshot* status_snapshot = nullptr,
@@ -178,7 +200,8 @@ class RimeWithWeaselHandler : public weasel::RequestHandler {
   void _UpdateShowNotifications(RimeConfig* config, bool initialize = false);
 
   void _UpdateInlinePreeditStatus(WeaselSessionId ipc_id);
-  void _RefreshTrayIconIfNeeded(RimeSessionId session_id);
+  void _RefreshTrayIconIfNeeded(RimeSessionId session_id,
+                                const weasel::Status& status);
   void _InvalidateTrayIconSignature();
   void _SetDeployMessage(DWORD result);
 
@@ -191,6 +214,9 @@ class RimeWithWeaselHandler : public weasel::RequestHandler {
   SessionStatus& new_session_status(WeaselSessionId ipc_id) {
     return m_session_status_map[ipc_id] = SessionStatus();
   }
+  void _RegisterLiveSession(WeaselSessionId ipc_id);
+  void _UnregisterLiveSession(WeaselSessionId ipc_id);
+  void _ClearLiveSessions();
 
   AppOptionsByAppName m_app_options;
   weasel::UI* m_ui;  // reference
@@ -215,6 +241,16 @@ class RimeWithWeaselHandler : public weasel::RequestHandler {
   static std::string m_option_name;
   static std::mutex m_notifier_mutex;
   SessionStatusMap m_session_status_map;
+  // Mirror of m_session_status_map's key set, guarded by its own tiny mutex
+  // so the Echo probe can answer without the engine api lock.
+  std::mutex m_live_sessions_mutex;
+  std::set<WeaselSessionId> m_live_sessions;
+  // Serializes every m_ui state access that runs without the engine api
+  // lock (the deferred UI apply) against style writes from config-load
+  // paths that do hold it. Lock order is always api -> ui.
+  std::recursive_mutex m_ui_state_mutex;
+  std::mutex m_pending_ui_mutex;
+  std::shared_ptr<UiPendingUpdate> m_pending_ui;
   bool m_current_dark_mode;
   bool m_global_ascii_mode;
   int m_show_notifications_time;

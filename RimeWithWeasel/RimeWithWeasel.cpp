@@ -57,7 +57,30 @@ RimeWithWeaselHandler::RimeWithWeaselHandler(UI* ui)
 RimeWithWeaselHandler::~RimeWithWeaselHandler() {
   m_show_notifications.clear();
   m_session_status_map.clear();
+  _ClearLiveSessions();
   m_app_options.clear();
+}
+
+void RimeWithWeaselHandler::_RegisterLiveSession(WeaselSessionId ipc_id) {
+  std::lock_guard<std::mutex> lock(m_live_sessions_mutex);
+  m_live_sessions.insert(ipc_id);
+}
+
+void RimeWithWeaselHandler::_UnregisterLiveSession(WeaselSessionId ipc_id) {
+  std::lock_guard<std::mutex> lock(m_live_sessions_mutex);
+  m_live_sessions.erase(ipc_id);
+}
+
+void RimeWithWeaselHandler::_ClearLiveSessions() {
+  std::lock_guard<std::mutex> lock(m_live_sessions_mutex);
+  m_live_sessions.clear();
+}
+
+bool RimeWithWeaselHandler::IsSessionLive(DWORD session_id) {
+  if (!session_id)
+    return false;
+  std::lock_guard<std::mutex> lock(m_live_sessions_mutex);
+  return m_live_sessions.count(session_id) != 0;
 }
 
 bool add_session = false;
@@ -124,7 +147,10 @@ void RimeWithWeaselHandler::Initialize() {
   RimeConfig config = {NULL};
   if (rime_api->config_open("weasel", &config)) {
     if (m_ui) {
-      _UpdateUIStyle(&config, m_ui, true);
+      {
+        std::lock_guard<std::recursive_mutex> ui_guard(m_ui_state_mutex);
+        _UpdateUIStyle(&config, m_ui, true);
+      }
       _UpdateShowNotifications(&config, true);
       m_current_dark_mode = IsUserDarkMode();
       if (m_current_dark_mode) {
@@ -133,14 +159,18 @@ void RimeWithWeaselHandler::Initialize() {
         if (rime_api->config_get_string(&config, "style/color_scheme_dark",
                                         buffer, BUF_SIZE)) {
           std::string color_name(buffer);
+          std::lock_guard<std::recursive_mutex> ui_guard(m_ui_state_mutex);
           _UpdateUIStyleColor(&config, m_ui->style(), color_name);
         }
       }
-      m_base_style = m_ui->style();
-      // Warm up UI resources with finalized style to avoid first-show
-      // latency: init plus one throwaway draw on the hidden panel keeps
-      // D3D/DWrite cold-start costs off the first keystroke.
-      m_ui->Prewarm();
+      {
+        std::lock_guard<std::recursive_mutex> ui_guard(m_ui_state_mutex);
+        m_base_style = m_ui->style();
+        // Warm up UI resources with finalized style to avoid first-show
+        // latency: init plus one throwaway draw on the hidden panel keeps
+        // D3D/DWrite cold-start costs off the first keystroke.
+        m_ui->Prewarm();
+      }
     }
     Bool global_ascii = false;
     if (rime_api->config_get_bool(&config, "global_ascii", &global_ascii))
@@ -174,6 +204,7 @@ void RimeWithWeaselHandler::Finalize() {
   m_active_session = 0;
   m_disabled = true;
   m_session_status_map.clear();
+  _ClearLiveSessions();
   LOG(INFO) << "Finalizing la rime.";
   rime_api->finalize();
 }
@@ -218,6 +249,7 @@ DWORD RimeWithWeaselHandler::AddSession(LPWSTR buffer, EatLine eat) {
   DLOG(INFO) << "Add session: created session_id = " << session_id
              << ", ipc_id = " << ipc_id;
   SessionStatus& session_status = new_session_status(ipc_id);
+  _RegisterLiveSession(ipc_id);
   session_status.style = m_base_style;
   session_status.session_id = session_id;
   _ReadClientInfo(ipc_id, buffer);
@@ -233,7 +265,10 @@ DWORD RimeWithWeaselHandler::AddSession(LPWSTR buffer, EatLine eat) {
     session_status.__synced = false;
     rime_api->free_status(&status);
   }
-  m_ui->style() = session_status.style;
+  {
+    std::lock_guard<std::recursive_mutex> ui_guard(m_ui_state_mutex);
+    m_ui->style() = session_status.style;
+  }
   // show session's welcome message :-) if any
   if (eat) {
     _Respond(ipc_id, eat);
@@ -246,14 +281,17 @@ DWORD RimeWithWeaselHandler::AddSession(LPWSTR buffer, EatLine eat) {
 }
 
 DWORD RimeWithWeaselHandler::RemoveSession(WeaselSessionId ipc_id) {
-  if (m_ui)
+  if (m_ui) {
+    std::lock_guard<std::recursive_mutex> ui_guard(m_ui_state_mutex);
     m_ui->Hide();
+  }
   if (m_disabled)
     return 0;
   DLOG(INFO) << "Remove session: session_id = " << to_session_id(ipc_id);
   // TODO: force committing? otherwise current composition would be lost
   rime_api->destroy_session(to_session_id(ipc_id));
   m_session_status_map.erase(ipc_id);
+  _UnregisterLiveSession(ipc_id);
   m_active_session = 0;
   return 0;
 }
@@ -262,6 +300,7 @@ void RimeWithWeaselHandler::UpdateColorTheme(BOOL darkMode) {
   RimeConfig config = {NULL};
   if (rime_api->config_open("weasel", &config)) {
     if (m_ui) {
+      std::lock_guard<std::recursive_mutex> ui_guard(m_ui_state_mutex);
       _UpdateUIStyle(&config, m_ui, true);
       m_current_dark_mode = darkMode;
       if (darkMode) {
@@ -289,7 +328,10 @@ void RimeWithWeaselHandler::UpdateColorTheme(BOOL darkMode) {
       rime_api->free_status(&status);
     }
   }
-  m_ui->style() = get_session_status(m_active_session).style;
+  {
+    std::lock_guard<std::recursive_mutex> ui_guard(m_ui_state_mutex);
+    m_ui->style() = get_session_status(m_active_session).style;
+  }
 }
 
 BOOL RimeWithWeaselHandler::ProcessKeyEvent(KeyEvent keyEvent,
@@ -406,8 +448,10 @@ void RimeWithWeaselHandler::FocusIn(DWORD client_caps, WeaselSessionId ipc_id) {
 
 void RimeWithWeaselHandler::FocusOut(DWORD param, WeaselSessionId ipc_id) {
   DLOG(INFO) << "Focus out: ipc_id = " << ipc_id;
-  if (m_ui)
+  if (m_ui) {
+    std::lock_guard<std::recursive_mutex> ui_guard(m_ui_state_mutex);
     m_ui->Hide();
+  }
   m_active_session = 0;
 }
 
@@ -416,8 +460,10 @@ void RimeWithWeaselHandler::UpdateInputPosition(RECT const& rc,
   DLOG(INFO) << "Update input position: (" << rc.left << ", " << rc.top
              << "), ipc_id = " << ipc_id
              << ", m_active_session = " << m_active_session;
-  if (m_ui)
+  if (m_ui) {
+    std::lock_guard<std::recursive_mutex> ui_guard(m_ui_state_mutex);
     m_ui->UpdateInputPosition(rc);
+  }
   if (m_disabled)
     return;
   if (m_active_session != ipc_id) {
@@ -526,6 +572,7 @@ void RimeWithWeaselHandler::_GetCandidateInfo(CandidateInfo& cinfo,
 
 void RimeWithWeaselHandler::StartMaintenance() {
   m_session_status_map.clear();
+  _ClearLiveSessions();
   Finalize();
   _InvalidateTrayIconSignature();
   _UpdateUI(0);
@@ -545,6 +592,7 @@ void RimeWithWeaselHandler::EndMaintenance(DWORD result) {
     NotifyService(result);
   }
   m_session_status_map.clear();
+  _ClearLiveSessions();
 }
 
 void RimeWithWeaselHandler::_SetDeployMessage(DWORD result) {
@@ -609,8 +657,16 @@ void RimeWithWeaselHandler::_UpdateUI(
   if (!m_ui)
     return;
 
-  Status weasel_status = m_ui->status();
+  // Gather phase: engine reads only. Runs while the caller holds the
+  // engine api lock; everything that touches the UI object is deferred to
+  // FlushPendingUI so DWrite layout and window operations never make other
+  // clients' keystrokes wait on the api lock.
+  Status weasel_status;
   Context weasel_context;
+  {
+    std::lock_guard<std::recursive_mutex> ui_guard(m_ui_state_mutex);
+    weasel_status = m_ui->status();
+  }
 
   RimeSessionId session_id = ipc_id ? to_session_id(ipc_id) : 0;
 
@@ -631,29 +687,62 @@ void RimeWithWeaselHandler::_UpdateUI(
       session_status.style.client_caps &= ~INLINE_PREEDIT_CAPABLE;
   }
 
-  if (!_ShowMessage(weasel_context, weasel_status) &&
-      RimeUiNeedsUpdate(m_ui->ctx(), m_ui->status(), weasel_context,
-                        weasel_status)) {
-    m_ui->Hide();
-    m_ui->Update(weasel_context, weasel_status);
-  }
+  _RefreshTrayIconIfNeeded(session_id, weasel_status);
 
-  _RefreshTrayIconIfNeeded(session_id);
-
+  auto update = std::make_shared<UiPendingUpdate>();
+  update->ctx = std::move(weasel_context);
+  update->status = std::move(weasel_status);
+  update->add_session = add_session;
+  update->show_notifications = m_show_notifications;
+  update->show_notifications_time = m_show_notifications_time;
   {
     std::lock_guard<std::mutex> lock(m_notifier_mutex);
+    update->message_type = m_message_type;
+    update->message_value = m_message_value;
+    update->message_label = m_message_label;
+    update->message_option = m_option_name;
     m_message_type.clear();
     m_message_value.clear();
     m_message_label.clear();
     m_option_name.clear();
   }
+  std::lock_guard<std::mutex> guard(m_pending_ui_mutex);
+  m_pending_ui = std::move(update);
 }
 
-void RimeWithWeaselHandler::_RefreshTrayIconIfNeeded(RimeSessionId session_id) {
+void RimeWithWeaselHandler::FlushPendingUI() {
   if (!m_ui)
     return;
-  RimeTrayIconSignature signature =
-      RimeTrayIconSignature::From(m_ui->style(), m_ui->status());
+  std::shared_ptr<UiPendingUpdate> update;
+  {
+    std::lock_guard<std::mutex> guard(m_pending_ui_mutex);
+    if (!m_pending_ui)
+      return;
+    update = std::move(m_pending_ui);
+  }
+  // Apply phase: no engine api lock held here. UI state is serialized
+  // against style writes from config-load paths by m_ui_state_mutex.
+  std::lock_guard<std::recursive_mutex> ui_guard(m_ui_state_mutex);
+  Context weasel_context = update->ctx;
+  Status weasel_status = update->status;
+  if (!_ShowMessage(*update, weasel_context, weasel_status) &&
+      RimeUiNeedsUpdate(m_ui->ctx(), m_ui->status(), weasel_context,
+                        weasel_status)) {
+    m_ui->Hide();
+    m_ui->Update(weasel_context, weasel_status);
+  }
+}
+
+void RimeWithWeaselHandler::_RefreshTrayIconIfNeeded(
+    RimeSessionId session_id,
+    const weasel::Status& status) {
+  if (!m_ui)
+    return;
+  RimeTrayIconSignature signature;
+  {
+    std::lock_guard<std::recursive_mutex> ui_guard(m_ui_state_mutex);
+    signature = RimeTrayIconSignature::From(m_ui->style(), status);
+  }
   if (signature == m_tray_icon_signature)
     return;
   m_tray_icon_signature = signature;
@@ -673,10 +762,16 @@ void RimeWithWeaselHandler::_LoadSchemaSpecificSettings(
   if (!rime_api->schema_open(schema_id.c_str(), &config))
     return;
   _UpdateShowNotifications(&config);
-  m_ui->style() = m_base_style;
-  _UpdateUIStyle(&config, m_ui, false);
+  {
+    std::lock_guard<std::recursive_mutex> ui_guard(m_ui_state_mutex);
+    m_ui->style() = m_base_style;
+    _UpdateUIStyle(&config, m_ui, false);
+  }
   SessionStatus& session_status = get_session_status(ipc_id);
-  session_status.style = m_ui->style();
+  {
+    std::lock_guard<std::recursive_mutex> ui_guard(m_ui_state_mutex);
+    session_status.style = m_ui->style();
+  }
   UIStyle& style = session_status.style;
   // load schema color style config
   const int BUF_SIZE = 255;
@@ -779,29 +874,34 @@ void RimeWithWeaselHandler::_LoadAppInlinePreeditSet(WeaselSessionId ipc_id,
     _UpdateInlinePreeditStatus(ipc_id);
 }
 
-bool RimeWithWeaselHandler::_ShowMessage(Context& ctx, Status& status) {
-  std::lock_guard<std::mutex> lock(m_notifier_mutex);
-  if (m_message_type.empty() || m_message_value.empty())
+bool RimeWithWeaselHandler::_ShowMessage(const UiPendingUpdate& update,
+                                         Context& ctx,
+                                         Status& status) {
+  // Runs in the deferred apply phase: all inputs come from the captured
+  // snapshot, so no notifier mutex is needed here.
+  const std::string& message_type = update.message_type;
+  const std::string& message_value = update.message_value;
+  if (message_type.empty() || message_value.empty())
     return m_ui->IsCountingDown();
-  if (ShouldSuppressInlineOptionNotification(m_message_type, m_message_value)) {
+  if (ShouldSuppressInlineOptionNotification(message_type, message_value)) {
     status.type = SCHEMA;
     return m_ui->IsCountingDown();
   }
   // show as auxiliary string
   std::wstring& tips(ctx.aux.str);
   bool show_icon = false;
-  if (m_message_type == "deploy") {
-    if (m_message_value == "start")
+  if (message_type == "deploy") {
+    if (message_value == "start")
       if (GetThreadUILanguage() == MAKELANGID(LANG_ENGLISH, SUBLANG_ENGLISH_US))
         tips = L"Deploying RIME";
       else
         tips = L"正在部署 RIME";
-    else if (m_message_value == "success")
+    else if (message_value == "success")
       if (GetThreadUILanguage() == MAKELANGID(LANG_ENGLISH, SUBLANG_ENGLISH_US))
         tips = L"Deployed";
       else
         tips = L"部署完成";
-    else if (m_message_value == "failure") {
+    else if (message_value == "failure") {
       if (GetThreadUILanguage() ==
           MAKELANGID(LANG_CHINESE, SUBLANG_CHINESE_TRADITIONAL))
         tips = L"有錯誤，請查看日誌 %TEMP%\\rime.weasel\\rime.weasel.*.INFO";
@@ -813,33 +913,34 @@ bool RimeWithWeaselHandler::_ShowMessage(Context& ctx, Status& status) {
             L"There is an error, please check the logs "
             L"%TEMP%\\rime.weasel\\rime.weasel.*.INFO";
     }
-  } else if (m_message_type == "schema") {
+  } else if (message_type == "schema") {
     tips = /*L"【" + */ status.schema_name /* + L"】"*/;
-  } else if (m_message_type == "option") {
+  } else if (message_type == "option") {
     status.type = SCHEMA;
-    if (m_message_value == "!ascii_mode") {
+    if (message_value == "!ascii_mode") {
       show_icon = true;
-    } else if (m_message_value == "ascii_mode") {
+    } else if (message_value == "ascii_mode") {
       show_icon = true;
     } else
-      tips = u8tow(m_message_label);
+      tips = u8tow(update.message_label);
 
-    if (m_message_value == "full_shape" || m_message_value == "!full_shape")
+    if (message_value == "full_shape" || message_value == "!full_shape")
       status.type = FULL_SHAPE;
-  } else if (m_message_type == "property") {
+  } else if (message_type == "property") {
     return false;
   }
   auto counter = m_ui->IsCountingDown();
   if (!show_icon && counter)
     return counter;
-  auto foption = m_show_notifications.find(m_option_name);
-  auto falways = m_show_notifications.find("always");
-  if ((!add_session && (foption != m_show_notifications.end() ||
-                        falways != m_show_notifications.end())) ||
-      m_message_type == "deploy") {
+  auto foption = update.show_notifications.find(update.message_option);
+  auto falways = update.show_notifications.find("always");
+  if ((!update.add_session &&
+       (foption != update.show_notifications.end() ||
+        falways != update.show_notifications.end())) ||
+      message_type == "deploy") {
     m_ui->Update(ctx, status);
-    if (m_show_notifications_time)
-      m_ui->ShowWithTimeout(m_show_notifications_time);
+    if (update.show_notifications_time)
+      m_ui->ShowWithTimeout(update.show_notifications_time);
     return true;
   } else {
     return m_ui->IsCountingDown();
@@ -1585,12 +1686,16 @@ void RimeWithWeaselHandler::_ApplyStatusSnapshot(
       if (session_status.style.inline_preedit != inline_preedit)
         // in case of inline_preedit set in schema
         _UpdateInlinePreeditStatus(ipc_id);
-      m_ui->style() = session_status.style;
       if (m_show_notifications.find("schema") != m_show_notifications.end() &&
           m_show_notifications_time > 0) {
+        std::lock_guard<std::recursive_mutex> ui_guard(m_ui_state_mutex);
+        m_ui->style() = session_status.style;
         ctx.aux.str = stat.schema_name;
         m_ui->Update(ctx, stat);
         m_ui->ShowWithTimeout(m_show_notifications_time);
+      } else {
+        std::lock_guard<std::recursive_mutex> ui_guard(m_ui_state_mutex);
+        m_ui->style() = session_status.style;
       }
     }
   }

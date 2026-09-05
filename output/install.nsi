@@ -17,11 +17,23 @@
   Push $8
   FileOpen $8 "$TEMP\weasel-stop-servers.ps1" w
   FileWrite $8 "param([string]$$Root = '')$\r$\n"
+  FileWrite $8 "$$log = Join-Path $$env:TEMP 'weasel-stop-servers.log'$\r$\n"
+  FileWrite $8 "Add-Content $$log ('[' + (Get-Date -Format s) + ' root=' + $$Root + ' pid=' + $$PID + ' is64=' + [Environment]::Is64BitProcess)$\r$\n"
   FileWrite $8 "if ([string]::IsNullOrEmpty($$Root)) { exit 0 }$\r$\n"
   FileWrite $8 "$$prefix = $$Root.TrimEnd('\') + '\'$\r$\n"
-  FileWrite $8 "Get-Process WeaselServer -ErrorAction SilentlyContinue |$\r$\n"
-  FileWrite $8 "  Where-Object { $$_.Path -and $$_.Path.StartsWith($$prefix, [System.StringComparison]::OrdinalIgnoreCase) } |$\r$\n"
-  FileWrite $8 "  Stop-Process -Force -ErrorAction SilentlyContinue$\r$\n"
+  FileWrite $8 "$$servers = @(Get-Process WeaselServer -ErrorAction SilentlyContinue | Where-Object { $$_.Path -and $$_.Path.StartsWith($$prefix, [System.StringComparison]::OrdinalIgnoreCase) })$\r$\n"
+  FileWrite $8 "Add-Content $$log ('matched=' + $$servers.Count)$\r$\n"
+  FileWrite $8 "foreach ($$s in $$servers) { Stop-Process -Id $$s.Id -Force -ErrorAction SilentlyContinue }$\r$\n"
+  ; 等待进程真正退出并释放对 WeaselServer.exe 的占用：只发 Stop-Process
+  ; 就继续安装的话，随后的 File 覆盖会失败，留下“新客户端 + 旧服务器”
+  ; 的混合安装（客户端/服务器行为不一致的根源）。
+  FileWrite $8 "foreach ($$s in $$servers) { Wait-Process -Id $$s.Id -Timeout 15 -ErrorAction SilentlyContinue }$\r$\n"
+  ; 兜底与可诊断性：Stop-Process 曾在提权安装上下文中静默失败（2026-09-04
+  ; 两次安装均未停掉旧服务）；taskkill 作第二次尝试并记录结果，失败时留下
+  ; 证据而不是无声跳过。
+  FileWrite $8 "foreach ($$s in $$servers) { if (Get-Process -Id $$s.Id -ErrorAction SilentlyContinue) { $$out = (& taskkill.exe /F /PID $$s.Id) 2>&1; Add-Content $$log ('taskkill pid=' + $$s.Id + ' out=' + ($$out -join ' ')) } }$\r$\n"
+  FileWrite $8 "$$left = @(Get-Process WeaselServer -ErrorAction SilentlyContinue | Where-Object { $$_.Path -and $$_.Path.StartsWith($$prefix, [System.StringComparison]::OrdinalIgnoreCase) })$\r$\n"
+  FileWrite $8 "Add-Content $$log ('remaining=' + $$left.Count)$\r$\n"
   FileWrite $8 "exit 0$\r$\n"
   FileClose $8
   ExecWait '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File "$TEMP\weasel-stop-servers.ps1" -Root "$9"'
@@ -257,7 +269,10 @@ Section "Weasel"
   Pop $R9
 skip_stop_weasel:
 
-  SetOverwrite try
+  ; 核心文件覆盖失败必须中止安装而不是静默跳过：try 模式下被占用的
+  ; WeaselServer.exe 会被悄悄保留，产生“新客户端 + 旧服务器”的混合
+  ; 安装。等不相关的可选文件用 /nonfatal 单独标记。
+  SetOverwrite on
   ; Set output path to the installation directory.
   SetOutPath $INSTDIR
 

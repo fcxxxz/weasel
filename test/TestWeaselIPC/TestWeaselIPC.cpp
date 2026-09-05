@@ -13,6 +13,7 @@
 #include <boost/interprocess/streams/bufferstream.hpp>
 using namespace boost::interprocess;
 
+#include <atomic>
 #include <iostream>
 #include <memory>
 #include <thread>
@@ -25,9 +26,11 @@ int bench_main(int iterations, int threads);
 int server_main();
 int unit_main();
 int realseat_main(int iterations, int churn);
+int stress_main();
 
 // usage: TestWeaselIPC.exe [/start | /stop | /console | /unit | /bench |
-//                          /realseat <iterations> <churn_sessions>]
+//                          /realseat <iterations> <churn_sessions> |
+//                          /stress]
 
 int _tmain(int argc, _TCHAR* argv[]) {
   if (argc == 1)  // no args
@@ -56,6 +59,8 @@ int _tmain(int argc, _TCHAR* argv[]) {
     int iterations = argc > 2 ? _wtoi(argv[2]) : 300;
     int churn = argc > 3 ? _wtoi(argv[3]) : 10;
     return realseat_main(iterations, churn);
+  } else if (argc > 1 && !wcscmp(L"/stress", argv[1])) {
+    return stress_main();
   }
 
   return -1;
@@ -665,6 +670,162 @@ int bench_main(int iterations, int threads) {
   return 0;
 }
 
+// ---------------------------------------------------------------------------
+// /stress: concurrent-clients regression test. A sandboxed /start server
+// (WEASEL_IPC_NAMESPACE isolates its pipe and instance mutex from the user's
+// live service) simulates heavy logins that hold the engine api lock while
+// several clients type concurrently. Keystrokes must NEVER be dropped (the
+// old try-lock dispatch silently answered 0 here and real apps received raw
+// letters), and the Echo probe must keep answering while the lock is held
+// (a stalled probe used to make clients mistake a busy server for a dead
+// one and tear down healthy sessions).
+// ---------------------------------------------------------------------------
+
+int stress_main() {
+  const wchar_t* kNamespace = L"stress";
+  const wchar_t* kSlowMs = L"25";
+  SetEnvironmentVariableW(L"WEASEL_IPC_NAMESPACE", kNamespace);
+  SetEnvironmentVariableW(L"WEASEL_TEST_SLOW_COMMAND_MS", kSlowMs);
+
+  // Spawn ourselves as the sandboxed server child.
+  WCHAR self[MAX_PATH] = {0};
+  GetModuleFileNameW(NULL, self, MAX_PATH);
+  std::wstring cmdline = std::wstring(L"\"") + self + L"\" /start";
+  STARTUPINFOW si = {sizeof(si)};
+  si.dwFlags = STARTF_USESHOWWINDOW;
+  si.wShowWindow = SW_HIDE;
+  PROCESS_INFORMATION pi = {0};
+  if (!CreateProcessW(self, &cmdline[0], NULL, NULL, FALSE,
+                      CREATE_NO_WINDOW, NULL, NULL, &si, &pi)) {
+    std::cerr << "stress: failed to spawn server child." << std::endl;
+    return 1;
+  }
+  CloseHandle(pi.hThread);
+
+  // Wait for the child's pipe to come up.
+  weasel::Client probe;
+  bool up = false;
+  for (int i = 0; i < 100 && !up; ++i) {
+    up = probe.TryConnect();
+    if (!up)
+      Sleep(100);
+  }
+  if (!up) {
+    std::cerr << "stress: server child did not come up." << std::endl;
+    TerminateProcess(pi.hProcess, 1);
+    WaitForSingleObject(pi.hProcess, 5000);
+    CloseHandle(pi.hProcess);
+    return 1;
+  }
+
+  using clock = std::chrono::steady_clock;
+
+  // The server recreates its listening pipe instance after every accept;
+  // a client that lands in that gap gets ERROR_PIPE_BUSY and Connect()
+  // fails without retrying (real TSF clients ride _EnsureServerConnected's
+  // retry loop over the same behavior). Mirror that tolerance here.
+  auto connect_with_retry = [](weasel::Client& client) {
+    for (int i = 0; i < 50; ++i) {
+      if (client.Connect())
+        return true;
+      Sleep(10);
+    }
+    return false;
+  };
+
+  // Load generator: continuous logins, each holding the api lock ~25ms.
+  std::atomic<bool> loading(true);
+  std::atomic<int> logins(0);
+  std::thread load([&]() {
+    weasel::Client client;
+    if (!connect_with_retry(client))
+      return;
+    while (loading.load(std::memory_order_relaxed)) {
+      client.EndSession();
+      client.StartSession();
+      logins.fetch_add(1, std::memory_order_relaxed);
+      Sleep(5);
+    }
+  });
+
+  // Typing clients: every key must be processed, none may be dropped.
+  const int kThreads = 4;
+  const int kKeysPerThread = 40;
+  std::atomic<int> dropped(0);
+  std::atomic<int> answered(0);
+  std::vector<std::thread> typers;
+  for (int t = 0; t < kThreads; ++t) {
+    typers.emplace_back([&]() {
+      weasel::Client client;
+      if (!connect_with_retry(client))
+        return;
+      client.StartSession();
+      for (int i = 0; i < kKeysPerThread; ++i) {
+        bool eaten = false;
+        if (client.ProcessKeyEvent(weasel::KeyEvent(L'a', 0), &eaten)) {
+          answered.fetch_add(1, std::memory_order_relaxed);
+        } else {
+          dropped.fetch_add(1, std::memory_order_relaxed);
+        }
+        Sleep(3);
+      }
+    });
+  }
+
+  // Echo must stay responsive while the api lock is held by slow logins.
+  double worst_echo_ms = 0.0;
+  std::thread prober([&]() {
+    weasel::Client client;
+    if (!connect_with_retry(client))
+      return;
+    client.StartSession();
+    for (int i = 0; i < 40; ++i) {
+      auto t0 = clock::now();
+      bool ok = client.Echo();
+      auto t1 = clock::now();
+      if (ok) {
+        double ms =
+            std::chrono::duration<double, std::milli>(t1 - t0).count();
+        worst_echo_ms = (std::max)(worst_echo_ms, ms);
+      }
+      Sleep(10);
+    }
+  });
+
+  for (auto& t : typers)
+    t.join();
+  prober.join();
+  loading.store(false, std::memory_order_relaxed);
+  load.join();
+
+  const int expected = kThreads * kKeysPerThread;
+  std::cout << "STRESS logins=" << logins.load() << " keys_answered="
+            << answered.load() << "/" << expected
+            << " keys_dropped=" << dropped.load()
+            << " worst_echo_ms=" << worst_echo_ms << std::endl;
+
+  int errors = 0;
+  if (answered.load() != expected || dropped.load() != 0) {
+    std::cerr << "stress: keystrokes were dropped under api-lock contention"
+              << std::endl;
+    ++errors;
+  }
+  if (worst_echo_ms > 100.0) {
+    std::cerr << "stress: echo stalled behind api-lock holders ("
+              << worst_echo_ms << "ms)" << std::endl;
+    ++errors;
+  }
+
+  weasel::Client shutdown;
+  if (shutdown.TryConnect()) {
+    shutdown.ShutdownServer(weasel::WEASEL_IPC_SHUTDOWN_REASON_STOP);
+    if (WaitForSingleObject(pi.hProcess, 10000) != WAIT_OBJECT_0)
+      TerminateProcess(pi.hProcess, 1);
+  }
+  CloseHandle(pi.hProcess);
+  return errors == 0 ? 0 : 1;
+}
+
 int console_main() {
   weasel::Client client;
   if (!client.Connect()) {
@@ -750,6 +911,11 @@ class TestRequestHandler : public weasel::RequestHandler {
   DWORD AddSession(LPWSTR buffer, EatLine eat = 0) override {
     if (trace_enabled_)
       std::cerr << "AddSession: " << m_counter + 1 << std::endl;
+    // /stress: simulate a heavy login (schema load) that holds the engine
+    // api lock, exactly like a real AddSession does while dispatching.
+    const int slow_ms = slow_command_ms_.load(std::memory_order_relaxed);
+    if (slow_ms > 0)
+      std::this_thread::sleep_for(std::chrono::milliseconds(slow_ms));
     return ++m_counter;
   }
   DWORD RemoveSession(WeaselSessionId ipc_id) override {
@@ -764,9 +930,13 @@ class TestRequestHandler : public weasel::RequestHandler {
       std::cerr << "ProcessKeyEvent: " << ipc_id
                 << " keycode: " << keyEvent.keycode
                 << " mask: " << keyEvent.mask << std::endl;
+    processed_keys_.fetch_add(1, std::memory_order_relaxed);
     eat(std::wstring(L"Greeting=Hello, 小狼毫.\n"));
     return TRUE;
   }
+
+  static std::atomic<int> slow_command_ms_;
+  static std::atomic<int> processed_keys_;
 
  private:
   static bool trace_enabled_;
@@ -779,6 +949,15 @@ bool TestRequestHandler::trace_enabled_ = []() {
                                          static_cast<DWORD>(_countof(value)));
   return length > 0 && value[0] != L'0';
 }();
+
+std::atomic<int> TestRequestHandler::slow_command_ms_([]() {
+  WCHAR value[8] = {0};
+  DWORD length = GetEnvironmentVariableW(L"WEASEL_TEST_SLOW_COMMAND_MS", value,
+                                         static_cast<DWORD>(_countof(value)));
+  return (length > 0 && length < _countof(value)) ? _wtoi(value) : 0;
+}());
+
+std::atomic<int> TestRequestHandler::processed_keys_(0);
 
 int server_main() {
   HRESULT hRes = _Module.Init(NULL, GetModuleHandle(NULL));

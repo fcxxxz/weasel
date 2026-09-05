@@ -403,6 +403,13 @@ struct RequestHandler {
   virtual void Initialize() {}
   virtual void Finalize() {}
   virtual DWORD FindSession(DWORD session_id) { return 0; }
+  // Lock-free liveness answer for the Echo probe. Must not touch the
+  // engine or wait behind slow api-lock holders (schema load, deployment):
+  // a busy server would otherwise be mistaken for a dead one and clients
+  // would tear down healthy sessions. Default falls back to FindSession.
+  virtual bool IsSessionLive(DWORD session_id) {
+    return FindSession(session_id) != 0;
+  }
   virtual DWORD AddSession(LPWSTR buffer, EatLine eat = 0) { return 0; }
   virtual DWORD RemoveSession(DWORD session_id) { return 0; }
   virtual BOOL ProcessKeyEvent(KeyEvent keyEvent,
@@ -430,6 +437,9 @@ struct RequestHandler {
   virtual void NotifyService(DWORD notification) {}
   virtual void SetOption(DWORD session_id, const std::string& opt, bool val) {}
   virtual void UpdateColorTheme(BOOL darkMode) {}
+  // Applies UI work deferred by the previous command after the engine api
+  // lock has been released; no-op unless the handler defers UI updates.
+  virtual void FlushPendingUI() {}
 };
 
 // 處理server端回應之物件

@@ -130,10 +130,21 @@ bool ClientImpl::ProcessKeyEvent(KeyEvent const& keyEvent, bool* eaten) {
   if (session_id == 0)
     return false;
 
+  // result == 0 from a completed transact means the request never reached
+  // the engine: either the server's bounded lock wait expired or the session
+  // was unknown. Both are safe to retry - the key was not applied - and a
+  // legit "processed, not eaten" answer is always nonzero, so the retry can
+  // never double-apply a key.
   DWORD result = 0;
-  if (!_TrySendMessage(WEASEL_IPC_PROCESS_KEY_EVENT_WITH_STATUS, keyEvent,
-                       session_id, &result))
-    return false;
+  for (int attempt = 0; attempt < 2; ++attempt) {
+    if (!_TrySendMessage(WEASEL_IPC_PROCESS_KEY_EVENT_WITH_STATUS, keyEvent,
+                         session_id, &result))
+      return false;
+    if (IsKeyEventResultProcessed(result))
+      break;
+    if (attempt == 0)
+      Sleep(15);
+  }
   if (!IsKeyEventResultProcessed(result))
     return false;
   if (eaten)

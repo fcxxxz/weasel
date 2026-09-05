@@ -1,5 +1,6 @@
 ﻿#include "stdafx.h"
 #include "WeaselServerImpl.h"
+#include <chrono>
 #include <mutex>
 #include <Windows.h>
 #include <resource.h>
@@ -27,9 +28,17 @@ class PipeServer : public PipeChannel<DWORD, PipeMessage> {
 using namespace weasel;
 
 extern CAppModule _Module;
-static std::mutex g_api_mutex;
+static std::timed_mutex g_api_mutex;
 
-static bool PipeMessageUsesTryOuterApiLock(PipeMessage pipe_msg) {
+// A keystroke answer must never be silently dropped: the TSF host thread is
+// blocked waiting for it and treats 0 as "not handled", leaking the letter
+// into the app. Wait behind slow api-lock holders (schema load, deployment)
+// for a bounded time instead of giving up immediately; the client retries
+// once on result 0, so only a lock held continuously for twice this budget
+// can still lose a key.
+static constexpr auto kKeyEventLockWait = std::chrono::milliseconds(250);
+
+static bool PipeMessageIsKeyEvent(PipeMessage pipe_msg) {
   return pipe_msg.Msg == WEASEL_IPC_PROCESS_KEY_EVENT ||
          pipe_msg.Msg == WEASEL_IPC_PROCESS_KEY_EVENT_WITH_STATUS;
 }
@@ -249,7 +258,9 @@ int ServerImpl::Run() {
 DWORD ServerImpl::OnEcho(WEASEL_IPC_COMMAND uMsg, DWORD wParam, DWORD lParam) {
   if (!m_pRequestHandler)
     return 0;
-  return m_pRequestHandler->FindSession(lParam);
+  // Deliberately lock-free (see HandlePipeMessage): answering the probe must
+  // not wait behind slow engine commands.
+  return m_pRequestHandler->IsSessionLive(lParam) ? lParam : 0;
 }
 
 DWORD ServerImpl::OnStartSession(WEASEL_IPC_COMMAND uMsg,
@@ -510,12 +521,19 @@ DWORD ServerImpl::DispatchPipeMessage(PipeMessage pipe_msg) {
 template <typename _Resp>
 void ServerImpl::HandlePipeMessage(PipeMessage pipe_msg, _Resp resp) {
   DWORD result;
-  if (PipeMessageUsesTryOuterApiLock(pipe_msg)) {
-    std::unique_lock<std::mutex> guard(g_api_mutex, std::try_to_lock);
-    if (!guard.owns_lock()) {
-      result = 0;
-    } else {
+  if (pipe_msg.Msg == WEASEL_IPC_ECHO) {
+    // Liveness probe: must answer while the api lock is held by a long
+    // command (schema load, deployment). OnEcho only consults the
+    // lock-free session registry, never the engine.
+    result = DispatchPipeMessage(pipe_msg);
+  } else if (PipeMessageIsKeyEvent(pipe_msg)) {
+    std::unique_lock<std::timed_mutex> guard(g_api_mutex, std::defer_lock);
+    if (guard.try_lock_for(kKeyEventLockWait)) {
       result = DispatchPipeMessage(pipe_msg);
+    } else {
+      // Exceeds twice the budget only during deployment-scale lock holds;
+      // report unprocessed so the client's single retry can still land.
+      result = 0;
     }
   } else if (PipeMessageNeedsOuterApiLock(pipe_msg)) {
     std::lock_guard guard(g_api_mutex);
@@ -525,6 +543,11 @@ void ServerImpl::HandlePipeMessage(PipeMessage pipe_msg, _Resp resp) {
   }
 
   resp(result);
+  // Deferred UI work (DWrite layout, window operations) runs here, after
+  // the client got its answer and with the engine api lock released, so it
+  // can never delay other clients' keystrokes.
+  if (m_pRequestHandler)
+    m_pRequestHandler->FlushPendingUI();
 }
 
 PipeServer::PipeServer(std::wstring&& pn_cmd, SECURITY_ATTRIBUTES* s)

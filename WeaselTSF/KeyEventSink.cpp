@@ -129,13 +129,14 @@ bool WeaselTSF::_ProcessKeyEvent(WPARAM wParam, LPARAM lParam, BOOL* pfEaten) {
         processed = true;
         weasel::ResponseParser parser(NULL, NULL, &_status, NULL,
                                       &_cand->style());
-        const bool response_ok = m_client.GetResponseData(std::ref(parser));
-        *pfEaten = response_ok ? (BOOL)eaten : FALSE;
-        if (!response_ok) {
-          _keyEventTestCache.Clear();
-          _activeKeyDownGuard.Reset();
-          m_client.ClearComposition();
-        }
+        // The response payload is advisory: the engine already consumed the
+        // key and holds the authoritative composition state. A garbled
+        // payload degrades this frame's status refresh only - passing the
+        // letter through or tearing the session down would trade a display
+        // glitch for lost input, and clearing the test cache would make the
+        // paired OnKeyDown resend the same key.
+        m_client.GetResponseData(std::ref(parser));
+        *pfEaten = (BOOL)eaten;
       } else {
         *pfEaten = FALSE;
         _RecoverServerAsync();

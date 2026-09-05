@@ -15,13 +15,16 @@ STDMETHODIMP WeaselTSF::DoEditSession(TfEditCookie ec) {
   try {
     ok = m_client.GetResponseData(std::ref(parser));
   } catch (...) {
-    // A malformed response must degrade to pass-through input. Do not let a
-    // third-party schema or missing runtime DLL take down the host process.
+    // Never let a malformed response take down the host process.
     ok = false;
   }
 
   if (!ok) {
-    _AbortComposition(true);
+    // A garbled payload is a display glitch, not a composition event: skip
+    // this frame's apply and keep the TSF composition untouched. The engine
+    // already holds the authoritative state and the next successful
+    // response carries the full context again; aborting here would drop
+    // the user's in-progress preedit.
     return TRUE;
   }
 
