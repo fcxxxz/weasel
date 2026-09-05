@@ -25,6 +25,7 @@ int bench_main(int iterations, int threads);
 int server_main();
 int unit_main();
 int realseat_main(int iterations, int churn);
+void candidate_window_logic_unit_tests();
 
 // usage: TestWeaselIPC.exe [/start | /stop | /console | /unit | /bench |
 //                          /realseat <iterations> <churn_sessions>]
@@ -504,6 +505,8 @@ int unit_main() {
   weasel::ClientImpl missing_server_client(
       L"\\\\.\\pipe\\WeaselTestMissingServerPipe");
   BOOST_TEST(!missing_server_client.TryConnect());
+
+  candidate_window_logic_unit_tests();
 
   return boost::report_errors();
 }

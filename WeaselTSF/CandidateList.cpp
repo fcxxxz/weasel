@@ -74,10 +74,13 @@ STDMETHODIMP CCandidateList::GetGUID(GUID* pguid) {
 }
 
 STDMETHODIMP CCandidateList::Show(BOOL showCandidateWindow) {
-  if (showCandidateWindow)
-    _ui->Show();
-  else
+  if (showCandidateWindow) {
+    if (_presentationGate.RequestShow())
+      _ui->Show();
+  } else {
+    _presentationGate.RequestHide();
     _ui->Hide();
+  }
   return S_OK;
 }
 
@@ -198,7 +201,34 @@ STDMETHODIMP CCandidateList::FinalizeExactCompositionString() {
   return E_NOTIMPL;
 }
 
-void CCandidateList::UpdateUI(const Context& ctx, const Status& status) {
+CompositionGeneration CCandidateList::BeginComposition() {
+  const auto generation = _presentationGate.BeginComposition();
+  _ui->Hide();
+  return generation;
+}
+
+bool CCandidateList::IsCurrentComposition(
+    CompositionGeneration generation) const {
+  return _presentationGate.IsCurrent(generation);
+}
+
+void CCandidateList::OnPositionUnavailable(CompositionGeneration generation) {
+  _presentationGate.OnPositionUnavailable(generation);
+}
+
+void CCandidateList::CancelComposition(CompositionGeneration generation) {
+  if (!_presentationGate.IsCurrent(generation))
+    return;
+  _presentationGate.CancelComposition(generation);
+  _ui->Hide();
+}
+
+void CCandidateList::UpdateUI(const Context& ctx,
+                              const Status& status,
+                              bool forceHide) {
+  if (forceHide)
+    Show(FALSE);
+
   if (_ui->style().inline_preedit) {
     _ui->style().client_caps |= weasel::INLINE_PREEDIT_CAPABLE;
   } else {
@@ -212,7 +242,7 @@ void CCandidateList::UpdateUI(const Context& ctx, const Status& status) {
   if (_pbShow == FALSE)
     _UpdateUIElement();
 
-  if (status.composing)
+  if (status.composing && !forceHide)
     Show(_pbShow);
   else
     Show(FALSE);
@@ -222,7 +252,17 @@ void CCandidateList::UpdateStyle(const UIStyle& sty) {
   _ui->style() = sty;
 }
 
-void CCandidateList::UpdateInputPosition(RECT const& rc) {
+void CCandidateList::UpdateInputPosition(RECT const& rc,
+                                         CompositionGeneration generation) {
+  const auto action = _presentationGate.OnPositionReady(generation);
+  if (action == CandidatePresentationAction::kNone)
+    return;
+  _ui->UpdateInputPosition(rc);
+  if (action == CandidatePresentationAction::kMoveAndShow && _pbShow)
+    _ui->Show();
+}
+
+void CCandidateList::CacheInputPosition(RECT const& rc) {
   _ui->UpdateInputPosition(rc);
 }
 
@@ -330,9 +370,7 @@ void CCandidateList::EndUI() {
   if (pThreadMgr) {
     com_ptr<ITfUIElementMgr> emgr;
     auto hr = pThreadMgr->QueryInterface(&emgr);
-    if (FAILED(hr))
-      return;
-    if (emgr != NULL)
+    if (SUCCEEDED(hr) && emgr != NULL)
       emgr->EndUIElement(uiid);
   }
   _uiStarted = false;
@@ -366,8 +404,10 @@ void CCandidateList::_MakeUIWindow() {
   _ui->Create(p);
 }
 
-void WeaselTSF::_UpdateUI(const Context& ctx, const Status& status) {
-  _cand->UpdateUI(ctx, status);
+void WeaselTSF::_UpdateUI(const Context& ctx,
+                          const Status& status,
+                          bool forceHide) {
+  _cand->UpdateUI(ctx, status, forceHide);
 }
 
 void WeaselTSF::_StartUI() {

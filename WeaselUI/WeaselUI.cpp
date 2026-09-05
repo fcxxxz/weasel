@@ -78,7 +78,10 @@ BOOL UI::IsShown() const {
 }
 void UI::UpdateInputPosition(RECT const& rc) {
   if (pimpl_ && pimpl_->panel.IsWindow()) {
+    const bool hidden = !::IsWindowVisible(pimpl_->panel.hwnd());
     pimpl_->panel.MoveTo(rc);
+    if (hidden)
+      pimpl_->dirty_on_show = true;
   }
 }
 void UI::Update(const Context& ctx, const Status& status) {

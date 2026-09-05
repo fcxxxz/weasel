@@ -4,6 +4,23 @@
 #include "ResponseParser.h"
 
 STDMETHODIMP WeaselTSF::DoEditSession(TfEditCookie ec) {
+  bool compositionEnded = false;
+  bool compositionEndAttempted = false;
+  bool pendingEndRetryFailed = false;
+  if (_compositionEndRetryState.HasPending(_pCompositionGeneration)) {
+    compositionEndAttempted = true;
+    compositionEnded = _RetryPendingCompositionEnd();
+    if (compositionEnded) {
+      // The old generation is detached. This response may legitimately need
+      // to end a newly-created composition of its own.
+      compositionEndAttempted = false;
+    } else {
+      pendingEndRetryFailed = true;
+      _positionRequestGate.Invalidate();
+      _cand->Show(FALSE);
+    }
+  }
+
   // get commit string from server
   std::wstring commit;
   weasel::Config config;
@@ -21,7 +38,7 @@ STDMETHODIMP WeaselTSF::DoEditSession(TfEditCookie ec) {
   }
 
   if (!ok) {
-    _AbortComposition(true);
+    _AbortComposition(true, compositionEndAttempted);
     return TRUE;
   }
 
@@ -32,8 +49,8 @@ STDMETHODIMP WeaselTSF::DoEditSession(TfEditCookie ec) {
   }
   _UpdateLanguageBar(_status);
 
-  bool compositionEnded = false;
-  if (!commit.empty()) {
+  bool compositionStarted = false;
+  if (!pendingEndRetryFailed && !commit.empty()) {
     // For auto-selecting, commit and preedit can both exist.
     // Commit the old TSF composition. If Rime immediately has a new
     // preedit (top-word input), _EndComposition() drops the local pointer
@@ -42,34 +59,51 @@ STDMETHODIMP WeaselTSF::DoEditSession(TfEditCookie ec) {
     if (!_IsComposing()) {
       _StartComposition(_pEditSessionContext,
                         _fCUASWorkaroundEnabled && !config.inline_preedit);
+      compositionStarted = true;
     }
     _InsertText(_pEditSessionContext, commit);
     // Keep the candidate UI alive while the replacement composition is
     // being created; otherwise the key-down path destroys the old window
     // and the new one cannot be positioned until key-up.
-    _EndComposition(_pEditSessionContext, false, !_status.composing);
-    compositionEnded = true;
+    compositionEndAttempted = true;
+    compositionEnded =
+        _EndComposition(_pEditSessionContext, false, !_status.composing);
+    if (!compositionEnded) {
+      pendingEndRetryFailed = true;
+      _positionRequestGate.Invalidate();
+      _cand->Show(FALSE);
+    }
     _committed = TRUE;
   } else {
-    _committed = FALSE;
+    _committed = !commit.empty();
   }
-  if (_status.composing && (compositionEnded || !_IsComposing())) {
-    _StartComposition(_pEditSessionContext,
-                      _fCUASWorkaroundEnabled && !config.inline_preedit);
-  } else if (!_status.composing && _IsComposing()) {
-    _EndComposition(_pEditSessionContext, true);
+  if (!pendingEndRetryFailed) {
+    if (_status.composing && (compositionEnded || !_IsComposing())) {
+      _StartComposition(_pEditSessionContext,
+                        _fCUASWorkaroundEnabled && !config.inline_preedit);
+      compositionStarted = true;
+    } else if (!_status.composing && _IsComposing() &&
+               !compositionEndAttempted) {
+      compositionEndAttempted = true;
+      compositionEnded = _EndComposition(_pEditSessionContext, true);
+      if (!compositionEnded) {
+        pendingEndRetryFailed = true;
+        _positionRequestGate.Invalidate();
+        _cand->Show(FALSE);
+      }
+    }
   }
-  if (_IsComposing() && config.inline_preedit) {
+  if (!pendingEndRetryFailed && _IsComposing() && config.inline_preedit) {
     _ShowInlinePreedit(_pEditSessionContext, context);
   }
 
-  if (!compositionEnded)
+  if (!pendingEndRetryFailed && !compositionEnded && !compositionStarted)
     _UpdateCompositionWindow(_pEditSessionContext);
   // Keep the existing candidate window alive during top-word input, but
   // publish the new candidates in this key-down edit session. Positioning is
   // still updated by the queued read session after the new composition is
   // created.
-  _UpdateUI(*context, _status);
+  _UpdateUI(*context, _status, pendingEndRetryFailed);
 
   return TRUE;
 }

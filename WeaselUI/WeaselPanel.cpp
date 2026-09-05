@@ -1,4 +1,5 @@
 #include "WeaselPanel.h"
+#include <CandidateWindowPosition.h>
 #include "FullScreenLayout.h"
 #include "HorizontalLayout.h"
 #include "VHorizontalLayout.h"
@@ -187,24 +188,35 @@ void WeaselPanel::ReleaseAllResources() {
 }
 
 void WeaselPanel::MoveTo(RECT rc) {
-  if (!m_hWnd || !m_layout)
+  if (!m_hWnd)
     return;
+  const LONGLONG delta_x = static_cast<LONGLONG>(rc.left) - m_inputPosRaw.left;
+  const LONGLONG delta_y = static_cast<LONGLONG>(rc.top) - m_inputPosRaw.top;
+  const bool should_reset_sticky =
+      m_ctx.empty() || (m_hasInputPos && (delta_x > 50 || delta_x < -50 ||
+                                          delta_y > 50 || delta_y < -50));
   if (!::IsWindowVisible(m_hWnd)) {
     // hidden: just remember where to place; the catch-up refresh on
     // show performs positioning with this input position
-    m_inputPos = rc;
-    m_inputPos.bottom += 6;
+    if (should_reset_sticky) {
+      m_sticky = false;
+      m_istorepos = false;
+    }
+    m_inputPosRaw = rc;
+    m_hasInputPos = true;
+    m_inputPosBottomGap = 6;
     return;
   }
+  if (!m_layout)
+    return;
   m_redraw_by_monitor_change = false;
-  bool should_reset_sticky =
-      (m_ctx.empty() || (abs(rc.left - m_inputPos.left) > 50) ||
-       (abs(rc.top - m_inputPos.top) > 50));
   if (should_reset_sticky && m_sticky) {
     m_sticky = false;
-    m_inputPos = rc;
-    m_inputPos.bottom += 6;
-    _Reposition(true);
+    m_istorepos = false;
+    m_inputPosRaw = rc;
+    m_hasInputPos = true;
+    m_inputPosBottomGap = 6;
+    _Reposition();
     RedrawWindow();
     return;
   }
@@ -213,16 +225,19 @@ void WeaselPanel::MoveTo(RECT rc) {
     POINT p;
     ::GetCursorPos(&p);
     RECT irc{p.x - STATUS_ICON_SIZE, p.y - STATUS_ICON_SIZE, p.x, p.y};
-    m_inputPos = irc;
-    _Reposition(true);
+    m_inputPosRaw = irc;
+    m_hasInputPos = true;
+    m_inputPosBottomGap = 0;
+    _Reposition();
     RedrawWindow();
-  } else if (!(rc.left == m_inputPos.left && rc.bottom != m_inputPos.bottom &&
-               abs(rc.bottom - m_inputPos.bottom) < 6) ||
+  } else if (!m_hasInputPos ||
+             !IsCandidateInputPositionJitter(m_inputPosRaw, rc) ||
              m_layout->ShouldDisplayStatusIcon()) {
-    m_inputPos = rc;
-    m_inputPos.bottom += 6;
+    m_inputPosRaw = rc;
+    m_hasInputPos = true;
+    m_inputPosBottomGap = 6;
     bool m_istorepos_buf = m_istorepos;
-    _Reposition(true);
+    _Reposition();
     if (m_redraw_by_monitor_change) {
       Refresh();
       return;
@@ -275,7 +290,7 @@ void WeaselPanel::_CreateLayout() {
   }
   if (IS_FULLSCREENLAYOUT(m_style)) {
     layout = std::make_unique<FullScreenLayout>(
-        m_style, m_ctx, m_status, m_inputPos, std::move(layout), m_pD2D);
+        m_style, m_ctx, m_status, m_inputPosRaw, std::move(layout), m_pD2D);
   }
   m_layout = std::move(layout);
 }
@@ -287,6 +302,7 @@ void WeaselPanel::_UpdateHideCandidates() {
   // When candidate list vanishes, release sticky top/bottom placement state.
   if (m_lastCandidateCount > 0 && m_candidateCount == 0) {
     m_sticky = false;
+    m_istorepos = false;
   }
   m_lastCandidateCount = m_candidateCount;
   // check if to hide candidates window
@@ -855,12 +871,12 @@ void WeaselPanel::_HighlightRect(const RECT& rect,
   }
 }
 
-void WeaselPanel::_Reposition(bool adj) {
+void WeaselPanel::_Reposition() {
   if (!m_layout || !m_hWnd)
     return;
   RECT rcWorkArea;
   memset(&rcWorkArea, 0, sizeof(rcWorkArea));
-  HMONITOR hMonitor = MonitorFromRect(&m_inputPos, MONITOR_DEFAULTTONEAREST);
+  HMONITOR hMonitor = MonitorFromRect(&m_inputPosRaw, MONITOR_DEFAULTTONEAREST);
   if (hMonitor) {
     MONITORINFO info;
     info.cbSize = sizeof(MONITORINFO);
@@ -882,51 +898,28 @@ void WeaselPanel::_Reposition(bool adj) {
     width = m_pendingSize.cx;
     height = m_pendingSize.cy;
   }
-  rcWorkArea.right -= width;
-  rcWorkArea.bottom -= height;
-  int x = m_inputPos.left;
-  int y = m_inputPos.bottom;
-  if (DPI_SCALE(m_style.shadow_radius)) {
-    x -= (DPI_SCALE(m_style.shadow_offset_x) >= 0 ||
-          COLORTRANSPARENT(m_style.shadow_color))
-             ? m_layout->offsetX
-             : (m_layout->offsetX / 2);
-    if (adj)
-      y -= (DPI_SCALE(m_style.shadow_offset_y) > 0 ||
-            COLORTRANSPARENT(m_style.shadow_color))
-               ? m_layout->offsetY
-               : (m_layout->offsetY / 2);
-  }
-  if (m_style.layout_type == UIStyle::LAYOUT_VERTICAL_TEXT &&
-      !m_style.vertical_text_left_to_right) {
-    x += m_layout->offsetX - width;
-    if (DPI_SCALE(m_style.shadow_offset_x) < 0)
-      x += m_layout->offsetX;
-  }
-  if (adj)
-    m_istorepos = false;
-  if (x > rcWorkArea.right)
-    x = rcWorkArea.right;
-  if (x < rcWorkArea.left)
-    x = rcWorkArea.left;
-  if (y > rcWorkArea.bottom || m_sticky) {
-    if (!m_sticky)
-      m_sticky = true;
-    y = m_inputPos.top - height - 6;
-    if (DPI_SCALE(m_style.shadow_radius) &&
-        DPI_SCALE(m_style.shadow_offset_y) > 0)
-      y -= DPI_SCALE(m_style.shadow_offset_y);
-    m_istorepos = (m_style.vertical_auto_reverse &&
-                   m_style.layout_type == UIStyle::LAYOUT_VERTICAL);
-    if (DPI_SCALE(m_style.shadow_radius) > 0)
-      y += (DPI_SCALE(m_style.shadow_offset_y) < 0 ||
-            COLORTRANSPARENT(m_style.shadow_color))
-               ? m_layout->offsetY
-               : (m_layout->offsetY / 2);
-  }
-  if (y < rcWorkArea.top)
-    y = rcWorkArea.top;
-  m_inputPos.bottom = y;
+  CandidateWindowPlacementStyle placement_style;
+  placement_style.anchor_gap_y = m_inputPosBottomGap;
+  placement_style.shadow_radius = DPI_SCALE(m_style.shadow_radius);
+  placement_style.shadow_offset_x = DPI_SCALE(m_style.shadow_offset_x);
+  placement_style.shadow_offset_y = DPI_SCALE(m_style.shadow_offset_y);
+  placement_style.layout_offset_x = m_layout->offsetX;
+  placement_style.layout_offset_y = m_layout->offsetY;
+  placement_style.shadow_transparent = COLORTRANSPARENT(m_style.shadow_color);
+  placement_style.vertical_text =
+      m_style.layout_type == UIStyle::LAYOUT_VERTICAL_TEXT;
+  placement_style.vertical_text_left_to_right =
+      m_style.vertical_text_left_to_right;
+  placement_style.vertical_layout =
+      m_style.layout_type == UIStyle::LAYOUT_VERTICAL;
+  placement_style.vertical_auto_reverse = m_style.vertical_auto_reverse;
+
+  const auto placement = ComputeCandidateWindowPlacement(
+      m_inputPosRaw, rcWorkArea, {width, height}, placement_style, m_sticky);
+  const int x = placement.origin.x;
+  const int y = placement.origin.y;
+  m_sticky = placement.sticky;
+  m_istorepos = placement.reverse_vertical_candidates;
   // Skip redundant moves of the hidden panel (Refresh() lands here on every
   // keystroke); keep re-asserting topmost while visible.
   if (x == rcWindow.left && y == rcWindow.top && !::IsWindowVisible(m_hWnd))
@@ -981,6 +974,7 @@ void WeaselPanel::OnDestroy() {
   m_hoverIndex = -1;
   m_layout.reset();
   m_sticky = false;
+  m_istorepos = false;
   m_dragging = false;
 }
 

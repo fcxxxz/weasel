@@ -44,7 +44,7 @@ class WeaselPanel {
   bool _DrawPreedit(const Text& text, bool isPreedit);
   bool _DrawCandidates();
   void _ResizeWindow();
-  void _Reposition(bool adj = false);
+  void _Reposition();
   void _TextOut(CRect& rc,
                 const wstring& text,
                 size_t cch,
@@ -80,7 +80,9 @@ class WeaselPanel {
   // helper to clear any active timers
   void _ClearTimers();
 
-  RECT m_inputPos{0, 0, 0, 0};
+  RECT m_inputPosRaw{0, 0, 0, 0};
+  bool m_hasInputPos = false;
+  int m_inputPosBottomGap = 0;
   CPoint m_lastCursorPos = {-1, -1};
 
   Context& m_ctx;
